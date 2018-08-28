@@ -84,14 +84,14 @@ class Decoder(object):
 
         return triples
 
-    def _sort_spans(self, scores, prd_index, prd_span_index, gamma=1.0):
+    def _sort_spans(self, scores, prd_index, prd_span_index):
         """
         :param scores: 1D: n_labels, 2D: n_spans; score
         :return: 1D: n_labels, 2D: n_words * n_words; elem=(r, i, j, score)
         """
         spans = []
         for r, scores_row in enumerate(scores):
-            score_prd = gamma * scores_row[prd_span_index]
+            score_prd = scores_row[prd_span_index]
             for index, score in enumerate(scores_row):
                 (i, j) = self.span_list[index]
                 if i <= prd_index <= j:

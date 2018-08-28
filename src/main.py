@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument('--dev_data', help='path to dev data')
     parser.add_argument('--test_data', help='path to test data')
     parser.add_argument('--data_type', default='conll05', help='conll05/conll12')
-    parser.add_argument('--data_size', type=int, default=1000000, help='data size to be used')
+    parser.add_argument('--data_size', type=int, default=100000000, help='data size to be used')
 
     ##################
     # Output Options #
@@ -40,7 +40,6 @@ def parse_args():
     # Search #
     ##########
     parser.add_argument('--search', type=str, default='argmax', help='argmax/greedy')
-    parser.add_argument('--gamma', type=float, default=1.0, help='Scaling factor')
 
     ###################
     # NN Architecture #
@@ -75,8 +74,8 @@ def parse_args():
     ###################
     parser.add_argument('--load_param', default=None, help='path to params')
     parser.add_argument('--load_param_dir', default=None, help='path to param dir')
-    parser.add_argument('--load_opt_param', default=None, help='path to params')
     parser.add_argument('--load_param_latest', action='store_true', default=False, help='load the latest params')
+    parser.add_argument('--load_opt_param', default=None, help='path to params')
     parser.add_argument('--load_label', default=None, help='path to labels')
 
     return parser.parse_args()
