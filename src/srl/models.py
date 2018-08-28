@@ -3,8 +3,7 @@ import theano.tensor as T
 
 from nn.layers.embeddings import Embedding, ElmoLayer
 from nn.layers.core import Dense, Dropout
-from nn.layers.stack import AlterBiRNNLayer
-from nn.layers.seqlabel import CRF
+from nn.layers.stack import BiRNNLayer
 from nn.utils import logsumexp3d
 
 
@@ -86,84 +85,14 @@ class FeatureLayer(Model):
             hidden_input_dim = (len(self.input_layers) - 2) * x_w_dim + x_m_dim + 1024
         else:
             hidden_input_dim = (len(self.input_layers) - 1) * x_w_dim + x_m_dim
-        hidden_layer = AlterBiRNNLayer(input_dim=hidden_input_dim,
-                                       output_dim=hidden_dim,
-                                       n_layers=args['n_layers'],
-                                       unit_type=args['rnn_unit'],
-                                       connect_type='dense',
-                                       drop_rate=drop_rate)
+        hidden_layer = BiRNNLayer(input_dim=hidden_input_dim,
+                                  output_dim=hidden_dim,
+                                  n_layers=args['n_layers'],
+                                  unit_type='lstm',
+                                  connect_type='dense',
+                                  drop_rate=drop_rate)
         self.hidden_layers = [hidden_layer]
         self.layers = self.input_layers + self.hidden_layers
-
-
-class SoftmaxLayer(Model):
-    def compile(self, **kwargs):
-        self._set_layers(kwargs)
-        self._set_params()
-
-    def _set_layers(self, args):
-        layer = Dense(input_dim=args['feat_dim'],
-                      output_dim=args['output_dim'],
-                      activation='softmax')
-        self.layers = [layer]
-
-    def forward(self, h):
-        """
-        :param h: 1D: n_words, 2D: batch_size, 3D: hidden_dim
-        :return: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=proba
-        """
-        return self.layers[0].forward(x=h.dimshuffle(1, 0, 2))
-
-    def get_y_pred(self, o):
-        """
-        :param o: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=proba
-        :return: 1D: batch_size, 2D: n_words; elem=label id
-        """
-        return T.argmax(o, axis=2)
-
-    def get_y_path_proba(self, o, y_true):
-        """
-        :param o: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=proba
-        :param y_true: 1D: batch_size, 2D: n_words; elem=label id
-        :return: 1D: batch_size; elem=log proba
-        """
-        o = o.reshape((o.shape[0] * o.shape[1], -1))
-        y_proba = o[T.arange(o.shape[0]), y_true.flatten()].reshape(y_true.shape)
-        return T.sum(T.log(y_proba), axis=1)
-
-
-class CRFLayer(Model):
-    def compile(self, **kwargs):
-        self._set_layers(kwargs)
-        self._set_params()
-
-    def _set_layers(self, args):
-        layer = CRF(input_dim=args['feat_dim'],
-                    output_dim=args['output_dim'])
-        self.layers = [layer]
-
-    def forward(self, h):
-        """
-        :param h: 1D: n_words, 2D: batch_size, 3D: hidden_dim
-        :return: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=emit score
-        """
-        return self.layers[0].forward(x=h).dimshuffle(1, 0, 2)
-
-    def get_y_pred(self, o):
-        """
-        :param o: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=emit score
-        :return: 1D: batch_size, 2D: n_words; elem=label id
-        """
-        return self.layers[0].get_y_pred(emit_scores=o.dimshuffle(1, 0, 2))
-
-    def get_y_path_proba(self, o, y_true):
-        """
-        :param o: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=emit score
-        :param y_true: 1D: batch_size, 2D: n_words; elem=label id
-        :return: 1D: batch_size; elem=log proba
-        """
-        return self.layers[0].get_y_proba(emit_scores=o.dimshuffle(1, 0, 2),
-                                          y_true=y_true.dimshuffle(1, 0))
 
 
 class LabelLayer(Model):
@@ -224,7 +153,7 @@ class MoELabelLayer(LabelLayer):
                         bias_init='zero')
         hidden_layer = Dense(input_dim=hidden_dim,
                              output_dim=hidden_dim,
-                             weight_init="orthone")
+                             weight_init="identity")
         output_layer = Dense(input_dim=hidden_dim,
                              output_dim=output_dim)
         self.hidden_dim = hidden_dim
@@ -257,30 +186,12 @@ class MoELabelLayer(LabelLayer):
         return self.layers[1].forward(h_span)
 
 
-class BaseModel(Model):
+class SpanModel(Model):
     def __init__(self):
-        super(BaseModel, self).__init__()
+        super(SpanModel, self).__init__()
         self.feat_layer = None
         self.label_layer = None
 
-    def compile(self, inputs, **kwargs):
-        self.inputs = inputs
-        self.feat_layer = FeatureLayer()
-        self.feat_layer.compile(**kwargs)
-        self.label_layer = SoftmaxLayer() if kwargs['seq_label_alg'] == 'softmax' else CRFLayer()
-        self.label_layer.compile(**kwargs)
-        self.layers = self.feat_layer.layers + self.label_layer.layers
-        self._set_params()
-
-    def get_output(self):
-        """
-        :return: 1D: batch_size, 2D: n_words, 3D: output_dim
-        """
-        h = self.feat_layer.calc_hidden_units(self.inputs)
-        return self.label_layer.forward(h)
-
-
-class SpanModel(BaseModel):
     def compile(self, inputs, **kwargs):
         self.inputs = inputs
         self.feat_layer = FeatureLayer()

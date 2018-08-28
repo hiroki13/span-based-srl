@@ -51,6 +51,7 @@ class Loader(object):
 
 
 class Conll05Loader(Loader):
+
     def load(self, path, data_size=1000000, is_test=False):
         if path is None:
             return []
@@ -75,6 +76,7 @@ class Conll05Loader(Loader):
 
 
 class CoNLL12Loader(Loader):
+
     def load(self, path, data_size=1000000, is_test=False):
         if path is None:
             return []

@@ -14,10 +14,9 @@ if theano.config.device.startswith('cuda'):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='SRL SYSTEM')
+    parser = argparse.ArgumentParser(description='SPAN SELECTION MODEL')
 
-    parser.add_argument('--mode', default='train', help='train/valid/test/h_arg/h_span')
-    parser.add_argument('--method', default='span', help='span/base')
+    parser.add_argument('--mode', default='train', help='train/valid/test')
     parser.add_argument('--seed', type=int, default=0, help='seed')
 
     ##################
@@ -49,8 +48,6 @@ def parse_args():
     parser.add_argument('--emb_dim', type=int, default=50, help='dimension of embeddings')
     parser.add_argument('--hidden_dim', type=int, default=32, help='dimension of hidden layer')
     parser.add_argument('--n_layers', type=int, default=1, help='number of layers')
-    parser.add_argument('--rnn_unit', default='lstm', help='gru/lstm')
-    parser.add_argument('--seq_label_alg', default='crf', help='softmax/crf')
     parser.add_argument('--n_experts', type=int, default=0, help='number of ensemble models')
 
     ####################
@@ -89,85 +86,15 @@ def main():
     argv = parse_args()
     np.random.seed(argv.seed)
 
-    if argv.data_type == "conll05":
-        from utils.loaders import Conll05Loader
-        loader = Conll05Loader(argv)
+    if argv.mode == "train":
+        from srl.trainers import Trainer
+        Trainer(argv=argv).train()
+    elif argv.mode == "valid":
+        from srl.trainers import Trainer
+        Trainer(argv=argv).validate()
     else:
-        from utils.loaders import CoNLL12Loader
-        loader = CoNLL12Loader(argv)
-
-    if argv.method == "span":
-        from srl.preprocessors import SpanPreprocessor
-        from utils.evaluators import SpanEvaluator
-        from srl.model_api import SpanModelAPI
-
-        if argv.mode == "train":
-            from srl.trainers import SpanTrainer
-
-            SpanTrainer(argv=argv,
-                        loader=loader,
-                        preprocessor=SpanPreprocessor(argv),
-                        evaluator=SpanEvaluator(argv),
-                        model_api=SpanModelAPI(argv)
-                        ).train()
-
-        elif argv.mode == "valid":
-            from srl.trainers import SpanTrainer
-
-            SpanTrainer(argv=argv,
-                        loader=loader,
-                        preprocessor=SpanPreprocessor(argv),
-                        evaluator=SpanEvaluator(argv),
-                        model_api=SpanModelAPI(argv)
-                        ).validate()
-
-        else:
-            from srl.testers import Tester
-            from utils.savers import SpanSaver
-
-            Tester(argv=argv,
-                   loader=loader,
-                   saver=SpanSaver(argv),
-                   preprocessor=SpanPreprocessor(argv),
-                   model_api=SpanModelAPI(argv)
-                   ).predict()
-
-    else:
-        from srl.preprocessors import BasePreprocessor
-        from utils.evaluators import Evaluator
-        from srl.model_api import ModelAPI
-
-        if argv.mode == "train":
-            from srl.trainers import Trainer
-
-            trainer = Trainer(argv=argv,
-                              loader=loader,
-                              preprocessor=BasePreprocessor(argv),
-                              evaluator=Evaluator(argv),
-                              model_api=ModelAPI(argv)
-                              )
-            trainer.train()
-
-        elif argv.mode == "valid":
-            from srl.trainers import Trainer
-
-            Trainer(argv=argv,
-                    loader=loader,
-                    preprocessor=BasePreprocessor(argv),
-                    evaluator=Evaluator(argv),
-                    model_api=ModelAPI(argv)
-                    ).validate()
-
-        else:
-            from srl.testers import Tester
-            from utils.savers import BaseSaver
-
-            Tester(argv=argv,
-                   loader=loader,
-                   saver=BaseSaver(argv),
-                   preprocessor=BasePreprocessor(argv),
-                   model_api=ModelAPI(argv)
-                   ).predict()
+        from srl.testers import Tester
+        Tester(argv=argv).predict()
 
 
 if __name__ == '__main__':

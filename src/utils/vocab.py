@@ -1,9 +1,4 @@
-PAD = u'PADDING'
 UNK = u'UNKNOWN'
-UNDER_BAR = u'_'
-HYPH = u'-'
-SLASH = u'/'
-VERB = u'V'
 
 
 class Vocab(object):

@@ -9,37 +9,6 @@ class Evaluator(object):
 
     def f_score(self, y_true, y_pred, vocab_label):
         """
-        :param y_true: 1D: n_batches, 2D: batch_size, 3D: n_words; elem=label id
-        :param y_pred: 1D: n_batches, 2D: batch_size, 3D: n_words; elem=label id
-        :param vocab_label: Vocab()
-        """
-        correct, p_total, r_total = self.calc_metrics(y_true=y_true,
-                                                      y_pred=y_pred,
-                                                      vocab_label=vocab_label)
-        p, r, f = calc_f_score(correct, p_total, r_total)
-        write('\tF:{:>7.2%}  P:{:>7.2%} ({:>5}/{:>5})  R:{:>7.2%} ({:>5}/{:>5})'.format(
-            f, p, int(correct), int(p_total), r, int(correct), int(r_total)))
-        return f
-
-    def calc_metrics(self, y_true, y_pred, vocab_label):
-        p_total = 0.
-        r_total = 0.
-        correct = 0.
-        for y_true_batch, y_pred_batch in zip(y_true, y_pred):
-            for y_true_i, y_pred_i in zip(y_true_batch, y_pred_batch):
-                y_true_spans = get_spans_from_bio_labels(y_true_i, vocab_label)
-                y_pred_spans = get_spans_from_bio_labels(y_pred_i, vocab_label)
-                p_total += len(y_pred_spans)
-                r_total += len(y_true_spans)
-                for y_pred_span in y_pred_spans:
-                    if y_pred_span in y_true_spans:
-                        correct += 1.
-        return correct, p_total, r_total
-
-
-class SpanEvaluator(Evaluator):
-    def f_score(self, y_true, y_pred, vocab_label):
-        """
         :param y_true: 1D: n_batches, 2D: batch_size, 3D: n_spans, 4D: [label_id, pre_index, post_index]
         :param y_pred: 1D: n_batches, 2D: batch_size, 3D: n_spans, 4D: [label_id, pre_index, post_index]
         """
@@ -93,68 +62,6 @@ def calc_f_score(correct, p_total, r_total):
     recall = correct / r_total if r_total > 0 else 0.
     f1 = (2 * precision * recall) / (precision + recall) if precision + recall > 0 else 0.
     return precision, recall, f1
-
-
-def calc_metrics_for_bio(y_true, y_pred, vocab_label):
-    p_total = 0.
-    r_total = 0.
-    correct = 0.
-    for y_true_i, y_pred_i in zip(y_true, y_pred):
-        y_true_spans = get_spans_from_bio_labels(y_true_i, vocab_label)
-        y_pred_spans = get_spans_from_bio_labels(y_pred_i, vocab_label)
-        p_total += len(y_pred_spans)
-        r_total += len(y_true_spans)
-        for y_pred_span in y_pred_spans:
-            if y_pred_span in y_true_spans:
-                correct += 1.
-    return correct, p_total, r_total
-
-
-def get_spans_from_bio_labels(sent, vocab_label):
-    spans = []
-    span = []
-    for w_i, label_id in enumerate(sent):
-        label = vocab_label.get_word(label_id)
-        if label[-2:] == '-V':
-            continue
-        if label.startswith('B-'):
-            if span:
-                spans.append(span)
-            span = [label[2:], w_i, w_i]
-        elif label.startswith('I-'):
-            if span:
-                if label[2:] == span[0]:
-                    span[2] = w_i
-                else:
-                    spans.append(span)
-                    span = [label[2:], w_i, w_i]
-            else:
-                span = [label[2:], w_i, w_i]
-        else:
-            if span:
-                spans.append(span)
-            span = []
-    if span:
-        spans.append(span)
-
-    return concat_c_spans_from_bio_labels(spans)
-
-
-def concat_c_spans_from_bio_labels(spans):
-    labels = [span[0] for span in spans]
-    c_indices = [i for i, span in enumerate(spans) if span[0].startswith('C')]
-    non_ant_c_spans = []
-
-    for c_index in c_indices:
-        c_span = spans[c_index]
-        c_label = c_span[0][2:]
-        if c_label in labels:
-            spans[labels.index(c_label)].extend(c_span[1:])
-        else:
-            non_ant_c_spans.append([c_label] + c_span[1:])
-    concated_spans = [span for i, span in enumerate(spans) if i not in c_indices]
-    spans = concated_spans + non_ant_c_spans
-    return spans
 
 
 def calc_metrics_for_spans(span_true, span_pred, marks):

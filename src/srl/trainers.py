@@ -1,23 +1,19 @@
-from utils.evaluators import calc_true_spans
-from utils.loaders import load_emb
+from srl.model_api import ModelAPI
+from srl.preprocessors import Preprocessor
+from utils.evaluators import Evaluator, calc_true_spans
+from utils.loaders import Conll05Loader, CoNLL12Loader, load_emb
+from utils.savers import save_pickle
 from utils.misc import write, show_score_history, make_vocab_from_ids
 from utils.misc import make_output_dir, get_file_names_in_dir, get_latest_param_fn
-from utils.savers import save_pickle
 
 
 class Trainer(object):
-
-    def __init__(self,
-                 argv,
-                 loader,
-                 preprocessor,
-                 evaluator,
-                 model_api):
+    def __init__(self, argv):
         self.argv = argv
-        self.loader = loader
-        self.preprocessor = preprocessor
-        self.evaluator = evaluator
-        self.model_api = model_api
+        self.model_api = ModelAPI(argv)
+        self.preprocessor = Preprocessor(argv)
+        self.evaluator = Evaluator(argv)
+        self.loader = Conll05Loader(argv) if argv.data_type == "conll05" else CoNLL12Loader(argv)
 
         self.f1_history = {}
         self.best_valid_f1 = 0.0
@@ -364,156 +360,3 @@ class Trainer(object):
         else:
             fn += '/param.%s.best' % argv.method
         save_pickle(fn=fn, data=best_param)
-
-
-class SpanTrainer(Trainer):
-    def output_h_arg(self):
-        argv = self.argv
-
-        ################
-        # Load dataset #
-        ################
-        write('\n\tLoading Dataset...')
-        dev_corpus = self.loader.load(path=argv.dev_data,
-                                      data_size=argv.data_size,
-                                      is_test=False)
-        dev_corpus = self.preprocessor.make_sents(dev_corpus)
-
-        #################
-        # Load init emb #
-        #################
-        if argv.init_emb:
-            write('\n\tLoading Embeddings...')
-            word_list_emb, init_emb = load_emb(argv.init_emb)
-            vocab_word_emb = self.preprocessor.make_vocab_word(word_list=word_list_emb)
-            write('\n\t# Embedding Words: %d' % vocab_word_emb.size())
-        else:
-            vocab_word_emb = init_emb = None
-
-        if self.argv.dev_elmo_emb:
-            write('\n\tLoading ELMo Embeddings...')
-            dev_elmo_embs = self.loader.load_hdf5(self.argv.dev_elmo_emb)
-        else:
-            dev_elmo_embs = None
-
-        ##############
-        # Make words #
-        ##############
-        if argv.load_word:
-            word_key_value = self.loader.load_key_value_format(argv.load_word)
-            vocab_word_corpus = make_vocab_from_ids(word_key_value)
-            write('\n\t# Words: %d' % vocab_word_corpus.size())
-        else:
-            vocab_word_corpus = None
-
-        ###############
-        # Make labels #
-        ###############
-        label_key_value = self.loader.load_key_value_format(argv.load_label)
-        vocab_label = make_vocab_from_ids(label_key_value)
-        vocab_label_dev = self.preprocessor.make_vocab_label(sents=dev_corpus,
-                                                             vocab_label_init=vocab_label)
-        write('\t# Labels: %d' % vocab_label.size())
-        write("\t%s\n" % str(vocab_label.i2w))
-
-        ###################
-        # Set sent params #
-        ###################
-        dev_corpus = self.preprocessor.set_sent_params(sents=dev_corpus,
-                                                       vocab_word_corpus=vocab_word_corpus,
-                                                       vocab_word_emb=vocab_word_emb,
-                                                       elmo_embs=dev_elmo_embs,
-                                                       vocab_label=vocab_label_dev)
-
-        #############
-        # Model API #
-        #############
-        self.model_api.set_model(init_emb=init_emb,
-                                 vocab_word_corpus=vocab_word_corpus,
-                                 vocab_word_emb=vocab_word_emb,
-                                 elmo=True if dev_elmo_embs is not None else False,
-                                 vocab_label=vocab_label)
-        self.model_api.load_params(argv.load_param)
-        self.model_api.set_pred_h_span_and_score_func()
-
-        ##############
-        # Validating #
-        ##############
-        write('\nPREDICTION START')
-        self.model_api.predict_h_span_and_triple(dev_corpus, vocab_label_dev)
-
-    def output_h_span(self):
-        argv = self.argv
-
-        ################
-        # Load dataset #
-        ################
-        write('\n\tLoading Dataset...')
-        dev_corpus = self.loader.load(path=argv.dev_data,
-                                      data_size=argv.data_size,
-                                      is_test=False)
-        dev_corpus = self.preprocessor.make_sents(dev_corpus)
-
-        #################
-        # Load init emb #
-        #################
-        if argv.init_emb:
-            write('\n\tLoading Embeddings...')
-            word_list_emb, init_emb = load_emb(argv.init_emb)
-            vocab_word_emb = self.preprocessor.make_vocab_word(word_list=word_list_emb)
-            write('\n\t# Embedding Words: %d' % vocab_word_emb.size())
-        else:
-            vocab_word_emb = init_emb = None
-
-        if self.argv.dev_elmo_emb:
-            write('\n\tLoading ELMo Embeddings...')
-            dev_elmo_embs = self.loader.load_hdf5(self.argv.dev_elmo_emb)
-        else:
-            dev_elmo_embs = None
-
-        ##############
-        # Make words #
-        ##############
-        if argv.load_word:
-            word_key_value = self.loader.load_key_value_format(argv.load_word)
-            vocab_word_corpus = make_vocab_from_ids(word_key_value)
-            write('\n\t# Words: %d' % vocab_word_corpus.size())
-        else:
-            vocab_word_corpus = None
-
-        ###############
-        # Make labels #
-        ###############
-        label_key_value = self.loader.load_key_value_format(argv.load_label)
-        vocab_label = make_vocab_from_ids(label_key_value)
-        vocab_label_dev = self.preprocessor.make_vocab_label(sents=dev_corpus,
-                                                             vocab_label_init=vocab_label)
-        write('\t# Labels: %d' % vocab_label.size())
-        write("\t%s\n" % str(vocab_label.i2w))
-
-        ###################
-        # Set sent params #
-        ###################
-        dev_corpus = self.preprocessor.set_sent_params(sents=dev_corpus,
-                                                       vocab_word_corpus=vocab_word_corpus,
-                                                       vocab_word_emb=vocab_word_emb,
-                                                       elmo_embs=dev_elmo_embs,
-                                                       vocab_label=vocab_label_dev)
-
-        #############
-        # Model API #
-        #############
-        self.model_api.set_model(init_emb=init_emb,
-                                 vocab_word_corpus=vocab_word_corpus,
-                                 vocab_word_emb=vocab_word_emb,
-                                 elmo=True if dev_elmo_embs is not None else False,
-                                 vocab_label=vocab_label,
-                                 vocab_label_dev=vocab_label_dev)
-        self.model_api.load_params(argv.load_param)
-        self.model_api.set_pred_h_span_and_score_func()
-
-        ##############
-        # Validating #
-        ##############
-        write('\nPREDICTION START')
-        self.model_api.output_h_span(dev_corpus)

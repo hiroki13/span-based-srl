@@ -1,7 +1,7 @@
 import theano
 import theano.tensor as T
 
-from nn.initializers import Zero, One, Xavier, Orthonormal, OrthOne, Uniform, Normal
+from nn.initializers import Zero, One, Identity, Uniform, Normal, Xavier, Orthonormal
 from nn.activations import sigmoid, tanh, relu, softmax
 
 
@@ -19,8 +19,8 @@ class Unit(object):
             init = Xavier()
         elif init_type == 'orth':
             init = Orthonormal()
-        elif init_type == 'orthone':
-            init = OrthOne()
+        elif init_type == 'identity':
+            init = Identity()
         elif init_type == 'uniform':
             init = Uniform()
         else:
@@ -75,9 +75,8 @@ class Dense(Unit):
 
 class Dropout(Unit):
     """
-        Reference: [Dropout: A Simple Way to Prevent Neural Networks from Overfitting]
+    Reference: [Dropout: A Simple Way to Prevent Neural Networks from Overfitting]
     """
-
     def __init__(self, rate, seed=0):
         super(Dropout, self).__init__(name='Dropout(p={:>1.1})'.format(rate))
         self.rate = min(1., max(0., rate))

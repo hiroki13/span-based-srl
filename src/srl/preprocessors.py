@@ -42,6 +42,65 @@ class Preprocessor(object):
             vocab_word.add_word(w)
         return vocab_word
 
+    def make_and_save_vocab_label(self,
+                                  sents,
+                                  vocab_label_init=None,
+                                  save=False,
+                                  load=False):
+        argv = self.argv
+
+        if load and argv.load_label:
+            label_key_value = load_key_value_format(argv.load_label)
+            vocab_label = make_vocab_from_ids(label_key_value)
+        else:
+            vocab_label = self.make_vocab_label(sents=sents,
+                                                vocab_label_init=vocab_label_init)
+        if save:
+            if argv.output_dir:
+                dir_name = argv.output_dir
+            else:
+                dir_name = 'output'
+            if argv.output_fn:
+                file_name = '/label_ids.' + argv.output_fn
+            else:
+                file_name = '/label_ids.size-%d' % vocab_label.size()
+
+            fn = dir_name + file_name
+            values, keys = map(lambda x: x, zip(*enumerate(vocab_label.i2w)))
+            save_key_value_format(fn=fn, keys=keys, values=values)
+
+        return vocab_label
+
+    def make_vocab_label(self,
+                         sents,
+                         vocab_label_init=None):
+        if len(sents) == 0:
+            return None
+
+        if vocab_label_init:
+            vocab_label = deepcopy(vocab_label_init)
+        else:
+            vocab_label = Vocab()
+            if self.argv.data_type == 'conll05':
+                core_labels = ["A0", "A1", "A2", "A3", "A4", "A5"]
+            else:
+                core_labels = ["ARG0", "ARG1", "ARG2", "ARG3", "ARG4", "ARG5"]
+            for label in core_labels:
+                vocab_label.add_word(label)
+
+        bio_labels = []
+        for sent in sents:
+            for props in sent.prd_props:
+                bio_labels += props
+        cnt = Counter(bio_labels)
+        bio_labels = [(w, c) for w, c in cnt.most_common()]
+
+        for label, count in bio_labels:
+            if not label.endswith('-V') and len(label) > 1:
+                vocab_label.add_word(label[2:])
+
+        return vocab_label
+
     @staticmethod
     def split_x_and_y(batches, index=-1):
         """
@@ -56,6 +115,46 @@ class Preprocessor(object):
             x.append(batch[:index])
             y.append(batch[index])
         return x, y
+
+    @staticmethod
+    def set_sent_params(sents, elmo_emb, vocab_word, vocab_label):
+        for index, sent in enumerate(sents):
+            sent.set_mark_ids()
+            if vocab_word:
+                sent.set_word_ids(vocab_word)
+            if elmo_emb:
+                sent.set_elmo_emb(elmo_emb[str(index)])
+            if vocab_label:
+                sent.set_span_triples(vocab_label)
+                sent.set_span_triples_with_null(vocab_label.size())
+        return sents
+
+    @staticmethod
+    def make_samples(sents, is_valid_data=True):
+        samples = []
+
+        for sent in sents:
+            x = []
+
+            x_word_ids = sent.word_ids
+            if x_word_ids is not None:
+                x.append(x_word_ids)
+
+            x_elmo_emb = sent.elmo_emb
+            if x_elmo_emb is not None:
+                x.append(x_elmo_emb)
+
+            if is_valid_data:
+                triples = sent.span_triples
+            else:
+                triples = sent.span_triples_with_null
+
+            assert len(sent.mark_ids) == len(triples)
+            for m, spans in zip(sent.mark_ids, triples):
+                # spans: 1D: n_spans, 2D: (r, i, j)
+                samples.append(x + [m, spans])
+
+        return samples
 
     def make_batches(self,
                      samples,
@@ -93,6 +192,26 @@ class Preprocessor(object):
             yield batch
 
     @staticmethod
+    def _make_one_batch(batch, is_valid_data):
+        if is_valid_data:
+            return list(map(lambda b: b, zip(*batch)))
+
+        b = []
+        y = []
+        n_words = len(batch[0][0])
+        for b_index, sample in enumerate(batch):
+            b.append(sample[:-1])
+            y_tmp = []
+            for (r, i, j) in sample[-1]:
+                span_index = convert_span_to_span_index(i, j, n_words)
+                y_tmp.append([b_index, r, span_index])
+            y += y_tmp
+
+        x = list(map(lambda b_i: b_i, zip(*b)))
+
+        return x + [y]
+
+    @staticmethod
     def make_batch_per_sent(sents):
         """
         :param sents: 1D: n_sents; Sent()
@@ -114,211 +233,6 @@ class Preprocessor(object):
             batches.append(list(map(lambda b: b, zip(*batch))))
 
         return batches
-
-    def make_and_save_vocab_label(self,
-                                  sents,
-                                  vocab_label_init=None,
-                                  save=False,
-                                  load=False):
-        argv = self.argv
-
-        if load and argv.load_label:
-            label_key_value = load_key_value_format(argv.load_label)
-            vocab_label = make_vocab_from_ids(label_key_value)
-        else:
-            vocab_label = self.make_vocab_label(sents=sents,
-                                                vocab_label_init=vocab_label_init)
-        if save:
-            if argv.output_dir:
-                dir_name = argv.output_dir
-            else:
-                dir_name = 'output'
-            if argv.output_fn:
-                file_name = '/label_ids.' + argv.output_fn
-            else:
-                file_name = '/label_ids.size-%d' % vocab_label.size()
-
-            fn = dir_name + file_name
-            values, keys = map(lambda x: x, zip(*enumerate(vocab_label.i2w)))
-            save_key_value_format(fn=fn, keys=keys, values=values)
-
-        return vocab_label
-
-    def make_vocab_label(self,
-                         sents,
-                         vocab_label_init=None):
-        raise NotImplementedError
-
-    @staticmethod
-    def set_sent_params(**kwargs):
-        raise NotImplementedError
-
-    def make_samples(self,
-                     corpus,
-                     is_valid_data=True):
-        raise NotImplementedError
-
-    @staticmethod
-    def _make_one_batch(**kwargs):
-        raise NotImplementedError
-
-
-class BasePreprocessor(Preprocessor):
-    def make_vocab_label(self,
-                         sents,
-                         vocab_label_init=None):
-        if len(sents) == 0:
-            return None
-
-        if vocab_label_init:
-            vocab_label = deepcopy(vocab_label_init)
-        else:
-            vocab_label = Vocab()
-            none_label = 'O'
-            vocab_label.add_word(none_label)
-
-        labels = []
-        for sent in sents:
-            if sent.has_prds:
-                for prop in sent.prd_props:
-                    labels += prop
-        cnt = Counter(labels)
-        labels = [(w, c) for w, c in cnt.most_common()]
-
-        for label, count in labels:
-            vocab_label.add_word(label)
-
-        return vocab_label
-
-    @staticmethod
-    def set_sent_params(sents,
-                        elmo_emb,
-                        vocab_word,
-                        vocab_label):
-        for index, sent in enumerate(sents):
-            sent.set_mark_ids()
-            if vocab_word:
-                sent.set_word_ids(vocab_word)
-            if elmo_emb:
-                sent.set_elmo_emb(elmo_emb[str(index)])
-            if vocab_label:
-                sent.set_label_ids(vocab_label)
-        return sents
-
-    def make_samples(self, sents, is_valid_data=True):
-        samples = []
-
-        for sent in sents:
-            x = []
-
-            x_word_ids = sent.word_ids
-            if x_word_ids is not None:
-                x.append(x_word_ids)
-
-            x_elmo_emb = sent.elmo_emb
-            if x_elmo_emb is not None:
-                x.append(x_elmo_emb)
-
-            assert len(sent.mark_ids) == len(sent.bio_label_ids)
-            samples += list(map(lambda m, y: x + [m, y],
-                                sent.mark_ids,
-                                sent.bio_label_ids))
-        return samples
-
-    @staticmethod
-    def _make_one_batch(batch, is_valid_data):
-        return list(map(lambda b: b, zip(*batch)))
-
-
-class SpanPreprocessor(Preprocessor):
-    def make_vocab_label(self,
-                         sents,
-                         vocab_label_init=None):
-        if len(sents) == 0:
-            return None
-
-        if vocab_label_init:
-            vocab_label = deepcopy(vocab_label_init)
-        else:
-            vocab_label = Vocab()
-            if self.argv.data_type == 'conll05':
-                core_labels = ["A0", "A1", "A2", "A3", "A4", "A5"]
-            else:
-                core_labels = ["ARG0", "ARG1", "ARG2", "ARG3", "ARG4", "ARG5"]
-            for label in core_labels:
-                vocab_label.add_word(label)
-
-        bio_labels = []
-        for sent in sents:
-            for props in sent.prd_props:
-                bio_labels += props
-        cnt = Counter(bio_labels)
-        bio_labels = [(w, c) for w, c in cnt.most_common()]
-
-        for label, count in bio_labels:
-            if not label.endswith('-V') and len(label) > 1:
-                vocab_label.add_word(label[2:])
-
-        return vocab_label
-
-    @staticmethod
-    def set_sent_params(sents, elmo_emb, vocab_word, vocab_label):
-        for index, sent in enumerate(sents):
-            sent.set_mark_ids()
-            if vocab_word:
-                sent.set_word_ids(vocab_word)
-            if elmo_emb:
-                sent.set_elmo_emb(elmo_emb[str(index)])
-            if vocab_label:
-                sent.set_span_triples(vocab_label)
-                sent.set_span_triples_with_null(vocab_label.size())
-        return sents
-
-    def make_samples(self, sents, is_valid_data=True):
-        samples = []
-
-        for sent in sents:
-            x = []
-
-            x_word_ids = sent.word_ids
-            if x_word_ids is not None:
-                x.append(x_word_ids)
-
-            x_elmo_emb = sent.elmo_emb
-            if x_elmo_emb is not None:
-                x.append(x_elmo_emb)
-
-            if is_valid_data:
-                triples = sent.span_triples
-            else:
-                triples = sent.span_triples_with_null
-
-            assert len(sent.mark_ids) == len(triples)
-            for m, spans in zip(sent.mark_ids, triples):
-                # spans: 1D: n_spans, 2D: (r, i, j)
-                samples.append(x + [m, spans])
-
-        return samples
-
-    @staticmethod
-    def _make_one_batch(batch, is_valid_data):
-        if is_valid_data:
-            return list(map(lambda b: b, zip(*batch)))
-
-        b = []
-        y = []
-        n_words = len(batch[0][0])
-        for b_index, sample in enumerate(batch):
-            b.append(sample[:-1])
-            y_tmp = []
-            for (r, i, j) in sample[-1]:
-                span_index = convert_span_to_span_index(i, j, n_words)
-                y_tmp.append([b_index, r, span_index])
-            y += y_tmp
-
-        x = list(map(lambda b_i: b_i, zip(*b)))
-
-        return x + [y]
 
 
 def make_sample_from_sent(sent):

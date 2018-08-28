@@ -1,7 +1,7 @@
 import theano.tensor as T
 
 from nn.layers.core import Dense, Dropout
-from nn.layers.recurrent import GRU, LSTM
+from nn.layers.recurrent import LSTM
 
 
 class StackLayer(object):
@@ -15,8 +15,6 @@ class StackLayer(object):
 
     @staticmethod
     def _set_rnn_unit(unit_type):
-        if unit_type == 'gru':
-            return GRU
         return LSTM
 
     @staticmethod
@@ -39,58 +37,10 @@ class BiRNNLayer(StackLayer):
                  output_dim,
                  n_layers,
                  unit_type,
-                 drop_rate=0.0):
-        name = 'BiRNNLayer-%d:(%dx%d)' % (n_layers, input_dim, output_dim)
-        super(BiRNNLayer, self).__init__(name=name)
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.n_layers = n_layers
-        self.rnn_unit = self._set_rnn_unit(unit_type=unit_type)
-        self.dropout = Dropout(drop_rate)
-
-        self.layers = self._set_layers()
-        self.params = self._set_params()
-
-    def _set_layers(self):
-        layers = []
-        for i in range(self.n_layers):
-            if i == 0:
-                unit_f = self.rnn_unit(input_dim=self.input_dim,
-                                       output_dim=self.output_dim)
-                unit_b = self.rnn_unit(input_dim=self.input_dim,
-                                       output_dim=self.output_dim)
-            else:
-                unit_f = self.rnn_unit(input_dim=2 * self.output_dim,
-                                       output_dim=self.output_dim)
-                unit_b = self.rnn_unit(input_dim=2 * self.output_dim,
-                                       output_dim=self.output_dim)
-            layers += [unit_f, unit_b]
-        return layers
-
-    def forward(self, x, mask=None, is_train=False):
-        for i in range(self.n_layers):
-            if mask is None:
-                hf = self.layers[i * 2].forward(x=x)
-                hb = self.layers[i * 2 + 1].forward(x=x[::-1])
-            else:
-                hf = self.layers[i * 2].forward(x=x, mask=mask)
-                hb = self.layers[i * 2 + 1].forward(x=x[::-1], mask=mask[::-1])
-            h = T.concatenate([hf, hb[::-1]], axis=2)
-            x = self.dropout.forward(x=h, is_train=is_train)
-        return x
-
-
-class AlterBiRNNLayer(StackLayer):
-    def __init__(self,
-                 input_dim,
-                 output_dim,
-                 n_layers,
-                 unit_type,
                  connect_type,
                  drop_rate=0.0):
-        name = 'AlterBiRNNLayer-%d:(%dx%d)' % (n_layers, input_dim, output_dim)
-        super(AlterBiRNNLayer, self).__init__(name=name)
+        name = 'BiRNNs-%d:(%dx%d)' % (n_layers, input_dim, output_dim)
+        super(BiRNNLayer, self).__init__(name=name)
 
         self.input_dim = input_dim
         self.output_dim = output_dim
