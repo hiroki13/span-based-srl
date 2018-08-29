@@ -3,7 +3,6 @@ from srl.preprocessors import Preprocessor
 from utils.evaluators import Evaluator
 from utils.loaders import Conll05Loader, CoNLL12Loader, load_emb
 from utils.savers import Saver
-
 from utils.misc import write, make_vocab_from_ids
 
 
