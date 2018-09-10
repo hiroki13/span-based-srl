@@ -1,7 +1,9 @@
 # A Span Selection Model for Semantic Role Labeling
 
 ## Citation
-If you use our code, please cite our paper:
+* A Span Selection Model for Semantic Role Labeling
+* Hiroki Ouchi, Hiroyuki Shindo and Yuji Matsumoto
+* In EMNLP 2018
 
 ```
 @inproceedings{ouchi:2018,
@@ -52,7 +54,7 @@ bc/cctv/00/cctv_0001   0   7              .     .          *))        -    -   -
 
 
 ## Usage
-### Training and Validating
+### Training
 SENNA: `python src/main.py --mode train --train_data path/to/conll2005.train.txt --dev_data path/to/conll2005.dev.txt --data_type conll05 --drop_rate 0.1 --reg 0.0001 --hidden_dim 300 --n_layers 4 --halve_lr --word_emb path/to/senna --save --output_dir output`
 
 ELMo: `python src/main.py --mode train --train_data path/to/conll2005.train.txt --dev_data path/to/conll2005.dev.txt --data_type conll05 --drop_rate 0.1 --reg 0.0001 --hidden_dim 300 --n_layers 4 --halve_lr --train_elmo_emb path/to/elmo.conll2005.train.hdf5 --dev_elmo_emb path/to/elmo.conll2005.dev.hdf5 --save --output_dir output`
