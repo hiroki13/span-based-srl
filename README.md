@@ -21,7 +21,7 @@ If you use our code, please cite our paper:
 * [Treebank-2](https://catalog.ldc.upenn.edu/LDC95T7)
 ### CoNLL-2012
 * [OntoNotes Release 5.0](https://catalog.ldc.upenn.edu/LDC2013T19)
-* We create the dataset by following (http://cemantix.org/data/ontonotes.html)
+* We create the dataset by following the process described at http://cemantix.org/data/ontonotes.html
 ### Word Representations
 * [SENNA](https://ronan.collobert.com/senna/download.html)
 * [ELMo](https://github.com/allenai/allennlp/tree/v0.6.1)
