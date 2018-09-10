@@ -127,8 +127,7 @@ class Trainer(object):
         else:
             is_ensemble = False
 
-        if argv.method == 'span':
-            self.model_api.n_true_spans = calc_true_spans(train_sents)
+        self.model_api.n_true_spans = calc_true_spans(train_sents)
 
         if is_ensemble:
             self.model_api.set_ensemble_model(word_emb=word_emb,

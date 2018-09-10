@@ -2,7 +2,7 @@
 
 ## Citation
 * A Span Selection Model for Semantic Role Labeling
-* Hiroki Ouchi, Hiroyuki Shindo and Yuji Matsumoto
+* Hiroki Ouchi (RIKEN AIP/Tohoku Univ.), Hiroyuki Shindo (NAIST) and Yuji Matsumoto (NAIST)
 * In EMNLP 2018
 
 ```
@@ -31,25 +31,25 @@
 ### Data Format
 #### CoNLL-2005
 ```
-0:WORD 1:POS 2:PARSE 3:NE 4:FRAME-ID 5:LEMMA 6-:ARGS
-Ms. NNP   (S1(S(NP*         *    -   -                    (A0*      
-Haag NNP           *)    (LOC*)   -   -                       *)     
-plays VBZ        (VP*         *    02  play                  (V*)     
-Elianti NNP        (NP*))       *    -   -                    (A1*)     
-. .             *))       *    -   -                       *      
+0:WORD 1:POS 2:PARSE 3:NE 4:FRAME 5:LEMMA 6-:ARGS
+Ms. NNP      (S1(S(NP*         *    -   -       (A0*
+Haag NNP             *)    (LOC*)   -   -          *)
+plays VBZ         (VP*         *    02  play     (V*)
+Elianti NNP       (NP*))       *    -   -       (A1*)
+. .                  *))       *    -   -          *
 ```
 
 #### CoNLL-2012
 ```
-0:DOCUMENT 1:PART 2:WORD-INDEX 3:WORD 4:POS 5:PARSE 6:LEMMA 7:FRAME-ID 8:SENSE 9:SPEAKER 10:NE 11-N:ARGS N:COREF
+0:DOCUMENT 1:PART 2:INDEX 3:WORD 4:POS 5:PARSE 6:LEMMA 7:FRAME 8:SENSE 9:SPEAKER 10:NE 11-N:ARGS N:COREF
 bc/cctv/00/cctv_0001   0   0           This    DT  (TOP(S(NP*         -    -   -   Speaker#1        *   (ARG2*   (61
 bc/cctv/00/cctv_0001   0   1            map    NN           *)        -    -   -   Speaker#1        *        *)   61)
 bc/cctv/00/cctv_0001   0   2      reflected   VBD        (VP*    reflect  01   1   Speaker#1        *      (V*)    -
 bc/cctv/00/cctv_0001   0   3            the    DT        (NP*         -    -   -   Speaker#1        *   (ARG1*     -
 bc/cctv/00/cctv_0001   0   4       European    JJ           *         -    -   -   Speaker#1    (NORP)       *     -
 bc/cctv/00/cctv_0001   0   5    battlefield    NN           *         -    -   -   Speaker#1        *        *     -
-bc/cctv/00/cctv_0001   0   6      situation    NN          *))        -    -   -   Speaker#1        *        *)    -
-bc/cctv/00/cctv_0001   0   7              .     .          *))        -    -   -   Speaker#1        *        *     -
+bc/cctv/00/cctv_0001   0   6      situation    NN           *))       -    -   -   Speaker#1        *        *)    -
+bc/cctv/00/cctv_0001   0   7              .     .           *))       -    -   -   Speaker#1        *        *     -
 ```
 
 
