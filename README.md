@@ -53,10 +53,12 @@ bc/cctv/00/cctv_0001   0   7              .     .          *))        -    -   -
 ## Usage
 ### Training and Validating
 SENNA: `python src/main.py --mode train --train_data path/to/conll2005.train.txt --dev_data path/to/conll2005.dev.txt --data_type conll05 --drop_rate 0.1 --reg 0.0001 --hidden_dim 300 --n_layers 4 --halve_lr --word_emb path/to/senna --save --output_dir output`
+
 ELMo: `python src/main.py --mode train --train_data path/to/conll2005.train.txt --dev_data path/to/conll2005.dev.txt --data_type conll05 --drop_rate 0.1 --reg 0.0001 --hidden_dim 300 --n_layers 4 --halve_lr --train_elmo_emb path/to/elmo.conll2005.train.hdf5 --dev_elmo_emb path/to/elmo.conll2005.dev.hdf5 --save --output_dir output`
 
 ### Predicting
 SENNA: `python src/main.py --mode test --test_data path/to/conll2005.test.txt --data_type conll05 --drop_rate 0.1 --hidden_dim 300 --n_layers 4 --output_dir output --output_fn conll2005.test --word_emb path/to/senna --load_label output/label_ids.txt --load_param output/param.epoch-0.pkl.gz --search greedy`
+
 ELMo: `python src/main.py --mode test --test_data path/to/conll2005.test.txt --data_type conll05 --drop_rate 0.1 --hidden_dim 300 --n_layers 4 --output_dir output --output_fn conll2005.test --test_elmo_emb path/to/elmo.conll2005.test.hdf5 --load_label output/label_ids.txt --load_param output/param.epoch-0.pkl.gz --search greedy`
 
 
