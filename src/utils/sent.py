@@ -61,17 +61,6 @@ class Sent(object):
             mark_ids[i][prd_index] = 1
         self.mark_ids = array(mark_ids)
 
-    def set_label_ids(self, vocab_label):
-        """
-        :param vocab_label: Vocab (BIO labels); e.g. B-A0, I-A0
-        """
-        assert len(self.prd_indices) == len(self.prd_props)
-        label_ids = []
-        for prd_index, props in zip(self.prd_indices, self.prd_props):
-            y = str_to_id(sent=props, vocab=vocab_label, unk='O')
-            label_ids.append(y)
-        self.bio_label_ids = array(label_ids)
-
     def set_elmo_emb(self, elmo_emb):
         """
         :param elmo_emb: 1D: n_layers, 2D: n_words, 3D: dim

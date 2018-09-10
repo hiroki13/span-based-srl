@@ -63,7 +63,7 @@ class Preprocessor(object):
             if argv.output_fn:
                 file_name = '/label_ids.' + argv.output_fn
             else:
-                file_name = '/label_ids.size-%d' % vocab_label.size()
+                file_name = '/label_ids'
 
             fn = dir_name + file_name
             values, keys = map(lambda x: x, zip(*enumerate(vocab_label.i2w)))
