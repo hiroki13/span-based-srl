@@ -1,3 +1,4 @@
+HYPH = u'-'
 UNK = u'UNKNOWN'
 
 

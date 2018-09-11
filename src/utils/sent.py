@@ -1,7 +1,7 @@
 import numpy as np
 
 from utils.misc import array, str_to_id
-from utils.vocab import UNK
+from utils.vocab import HYPH, UNK
 
 
 class Sent(object):
@@ -44,7 +44,7 @@ class Sent(object):
 
     @staticmethod
     def _set_prd_indices(marks):
-        return [i for i, mark in enumerate(marks) if mark != '-']
+        return [i for i, mark in enumerate(marks) if mark != HYPH]
 
     @staticmethod
     def _set_prd_props(props):
@@ -177,7 +177,7 @@ class Conll12Sent(Sent):
                     prop=line[11:-1] if is_test is False else [])
 
     def _set_marks(self, words):
-        return list(map(lambda w: w.mark if w.sense != '-' else '-', words))
+        return list(map(lambda w: w.mark if w.sense != HYPH else HYPH, words))
 
 
 class Word(object):
