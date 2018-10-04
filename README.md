@@ -1,4 +1,4 @@
-# A Span Selection Model for Semantic Role Labeling
+# A Span Selection Model for Semantic Role Labeling (Under Construction)
 
 ## Citation
 * A Span Selection Model for Semantic Role Labeling
@@ -6,8 +6,11 @@
 * In EMNLP 2018
 
 ```
-@inproceedings{ouchi:2018,
+@inproceedings{ouchi2018spansrl,
   title = {A Span Selection Model for Semantic Role Labeling},
+  author = 	"Ouchi, Hiroki and Shindo, Hiroyuki and Matsumoto, Yuji",
+  booktitle={Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing},
+  year={2018}
 }
 ```
 
