@@ -4,13 +4,20 @@
 * A Span Selection Model for Semantic Role Labeling
 * Hiroki Ouchi (RIKEN AIP/Tohoku Univ.), Hiroyuki Shindo (NAIST) and Yuji Matsumoto (NAIST)
 * In EMNLP 2018
-
+* Conference paper: http://aclweb.org/anthology/D18-1191
+* arXiv version: https://arxiv.org/abs/1810.02245
 ```
-@inproceedings{ouchi2018spansrl,
-  title = {A Span Selection Model for Semantic Role Labeling},
-  author = 	"Ouchi, Hiroki and Shindo, Hiroyuki and Matsumoto, Yuji",
-  booktitle={Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing},
-  year={2018}
+@InProceedings{D18-1191,
+  author = 	"Ouchi, Hiroki
+		and Shindo, Hiroyuki
+		and Matsumoto, Yuji",
+  title = 	"A Span Selection Model for Semantic Role Labeling",
+  booktitle = 	"Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing",
+  year = 	"2018",
+  publisher = 	"Association for Computational Linguistics",
+  pages = 	"1630--1642",
+  location = 	"Brussels, Belgium",
+  url = 	"http://aclweb.org/anthology/D18-1191"
 }
 ```
 
