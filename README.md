@@ -35,7 +35,10 @@
 * [OntoNotes Release 5.0](https://catalog.ldc.upenn.edu/LDC2013T19)
 * We create the dataset by following the process described at http://cemantix.org/data/ontonotes.html
 ### Word Representations
-* [SENNA](https://ronan.collobert.com/senna/download.html)
+- [SENNA](https://ronan.collobert.com/senna/download.html)
+    - Download the software and make the word-embedding pair file as follows.
+    - `paste hash/words.lst embeddings/embeddings.txt > senna.emb.txt`
+
 * [ELMo](https://github.com/allenai/allennlp/tree/v0.6.1)
 
 ### Data Format
