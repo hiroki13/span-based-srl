@@ -27,6 +27,15 @@
 * [Theano](http://deeplearning.net/software/theano/)
 * [h5py](https://www.h5py.org/)
 
+## Installation
+```
+bash Anaconda3-4.3.0-Linux-x86_64.sh
+export PATH=~/anaconda3/bin:$PATH
+conda create -n theano-py3 python=3.6
+source activate theano-py3
+conda install -c conda-forge theano
+conda install -c anaconda h5py
+```
 
 ## Data
 ### CoNLL-2005
@@ -42,17 +51,28 @@
 * [ELMo](https://github.com/allenai/allennlp/tree/v0.6.1)
 
 ### Data Format
-#### CoNLL-2005
+#### CoNLL-2005 Training & Development Sets
 ```
 0:WORD 1:POS 2:PARSE 3:NE 4:FRAME 5:LEMMA 6-:ARGS
-Ms. NNP      (S1(S(NP*         *    -   -       (A0*
-Haag NNP             *)    (LOC*)   -   -          *)
-plays VBZ         (VP*         *    02  play     (V*)
-Elianti NNP       (NP*))       *    -   -       (A1*)
-. .                  *))       *    -   -          *
+Ms.                NNP    (S1(S(NP*         *    -   -       (A0*
+Haag               NNP            *)    (LOC*)   -   -          *)
+plays              VBZ         (VP*         *    02  play     (V*)
+Elianti            NNP         (NP*))       *    -   -       (A1*)
+.                   .             *))       *    -   -          *
 ```
 
-#### CoNLL-2012
+#### CoNLL-2005 Test Set (Not including FRAME ID)
+```
+0:WORD 1:POS 2:PARSE 3:NE 4:LEMMA 5-:ARGS
+The                DT     (S1(S(NP*         *                 (A1*
+finger-pointing    JJ             *)        *    -               *)
+has                AUX         (VP*         *    -               *
+already            RB        (ADVP*)        *    -        (AM-TMP*)
+begun              VBN         (VP*))       *    begin         (V*)
+.
+```
+
+#### CoNLL-2012 Training/Development/Test Sets
 ```
 0:DOCUMENT 1:PART 2:INDEX 3:WORD 4:POS 5:PARSE 6:LEMMA 7:FRAME 8:SENSE 9:SPEAKER 10:NE 11-N:ARGS N:COREF
 bc/cctv/00/cctv_0001   0   0           This    DT  (TOP(S(NP*         -    -   -   Speaker#1        *   (ARG2*   (61
