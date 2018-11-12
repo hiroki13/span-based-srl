@@ -29,8 +29,6 @@
 
 ## Installation
 ```
-bash Anaconda3-4.3.0-Linux-x86_64.sh
-export PATH=~/anaconda3/bin:$PATH
 conda create -n theano-py3 python=3.6
 source activate theano-py3
 conda install -c conda-forge theano
