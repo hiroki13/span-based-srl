@@ -16,7 +16,8 @@ if theano.config.device.startswith('cuda'):
 def parse_args():
     parser = argparse.ArgumentParser(description='SPAN SELECTION MODEL')
 
-    parser.add_argument('--mode', default='train', help='train/valid/test')
+    parser.add_argument('--mode', default='train', help='train/test')
+    parser.add_argument('--method', default='span', help='crf/span')
     parser.add_argument('--seed', type=int, default=0, help='seed')
 
     ##################
@@ -32,14 +33,13 @@ def parse_args():
     # Output Options #
     ##################
     parser.add_argument('--save', action='store_true', default=False, help='parameters to be saved or not')
-    parser.add_argument('--save_every_epoch', action='store_true', default=False, help='save at every epoch')
     parser.add_argument('--output_dir', type=str, default='output', help='output directory name')
     parser.add_argument('--output_fn', type=str, default=None, help='output file name')
 
     ##########
     # Search #
     ##########
-    parser.add_argument('--search', type=str, default='argmax', help='argmax/greedy')
+    parser.add_argument('--search', type=str, default='greedy', help='argmax/greedy')
 
     ###################
     # NN Architecture #
@@ -85,15 +85,64 @@ def main():
     argv = parse_args()
     np.random.seed(argv.seed)
 
-    if argv.mode == "train":
-        from srl.trainers import Trainer
-        Trainer(argv=argv).train()
-    elif argv.mode == "valid":
-        from srl.trainers import Trainer
-        Trainer(argv=argv).validate()
+    if argv.data_type == "conll05":
+        from utils.loaders import Conll05Loader
+        loader = Conll05Loader(argv)
     else:
-        from srl.testers import Tester
-        Tester(argv=argv).predict()
+        from utils.loaders import Conll12Loader
+        loader = Conll12Loader(argv)
+
+    if argv.method == "span":
+        from srl.preprocessors import SpanPreprocessor
+        from utils.evaluators import SpanEvaluator
+        from srl.model_api import SpanModelAPI
+
+        if argv.mode == "train":
+            from srl.trainers import Trainer
+
+            Trainer(argv=argv,
+                    loader=loader,
+                    preprocessor=SpanPreprocessor(argv),
+                    evaluator=SpanEvaluator(argv),
+                    model_api=SpanModelAPI(argv)
+                    ).train()
+        else:
+            from srl.testers import Tester
+            from utils.savers import SpanSaver
+
+            Tester(argv=argv,
+                   loader=loader,
+                   saver=SpanSaver(argv),
+                   preprocessor=SpanPreprocessor(argv),
+                   evaluator=SpanEvaluator(argv),
+                   model_api=SpanModelAPI(argv)
+                   ).predict()
+    else:
+        from srl.preprocessors import BIOPreprocessor
+        from utils.evaluators import BIOEvaluator
+        from srl.model_api import BIOModelAPI
+
+        if argv.mode == "train":
+            from srl.trainers import Trainer
+
+            trainer = Trainer(argv=argv,
+                              loader=loader,
+                              preprocessor=BIOPreprocessor(argv),
+                              evaluator=BIOEvaluator(argv),
+                              model_api=BIOModelAPI(argv)
+                              )
+            trainer.train()
+        else:
+            from srl.testers import Tester
+            from utils.savers import BIOSaver
+
+            Tester(argv=argv,
+                   loader=loader,
+                   saver=BIOSaver(argv),
+                   preprocessor=BIOPreprocessor(argv),
+                   evaluator=BIOEvaluator(argv),
+                   model_api=BIOModelAPI(argv)
+                   ).predict()
 
 
 if __name__ == '__main__':

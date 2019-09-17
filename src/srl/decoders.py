@@ -1,7 +1,7 @@
 from copy import deepcopy
 from itertools import combinations_with_replacement as comb
 
-from utils.misc import convert_span_to_span_index
+from utils.misc import span_to_span_index
 
 
 class Decoder(object):
@@ -63,9 +63,9 @@ class Decoder(object):
 
         n_words = len(mark)
         prd_index = mark.nonzero()[0][0]
-        prd_span_index = convert_span_to_span_index(i=prd_index,
-                                                    j=prd_index,
-                                                    n_words=n_words)
+        prd_span_index = span_to_span_index(i=prd_index,
+                                            j=prd_index,
+                                            n_words=n_words)
         spans = self._sort_spans(scores=scores,
                                  prd_index=prd_index,
                                  prd_span_index=prd_span_index)

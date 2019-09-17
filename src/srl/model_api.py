@@ -7,17 +7,17 @@ import numpy as np
 import theano
 import theano.tensor as T
 
-from srl.models import SpanModel, MoEModel
+from srl.models import SpanModel, MoEModel, CRFModel
 from srl.decoders import Decoder
 from nn.regularizers import L2Regularizer
 from nn.optimizers import get_optimizer
-from utils.evaluators import calc_f_score, calc_correct_and_pred_spans
+from utils.evaluators import f_score, correct_and_pred_spans, metrics_for_bio
 from utils.savers import save_pickle
 from utils.loaders import load_pickle
 from utils.misc import write
 
 
-class ModelAPI(object):
+class SpanModelAPI(object):
     def __init__(self, argv):
         self.argv = argv
 
@@ -38,10 +38,7 @@ class ModelAPI(object):
         self.decoder = None
         self.optimizer = None
 
-        self.correct = 0.
-        self.n_pred_spans = 0.
         self.n_true_spans = 0.
-        self.n_total_batches = 0
 
     def set_model(self, **kwargs):
         write('Setting a model...')
@@ -204,13 +201,13 @@ class ModelAPI(object):
         span_true = T.imatrix('span_true')
 
         # 1D: batch_size, 2D: n_spans, 3D: 2 * hidden_dim
-        h_span = self.model.calc_span_feats(inputs=self.model.inputs)
+        h_span = self.model.span_feats(inputs=self.model.inputs)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        span_score = self.model.label_layer.calc_logit_scores(h=h_span)
+        span_score = self.model.label_layer.logit_scores(h=h_span)
         # 1D: batch_size, 2D: n_labels; label id
         span_pred = self.model.argmax_span(span_score=span_score)
 
-        nll = self.model.calc_loss(span_score, span_true)
+        nll = self.model.loss(span_score, span_true)
         l2_reg = L2Regularizer()
         objective = nll + l2_reg(alpha=self.argv.reg,
                                  params=self.model.params)
@@ -234,9 +231,9 @@ class ModelAPI(object):
 
     def set_pred_argmax_func(self):
         # 1D: batch_size, 2D: n_spans, 3D: hidden_dim
-        h_span = self.model.calc_span_feats(inputs=self.model.inputs)
+        h_span = self.model.span_feats(inputs=self.model.inputs)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        logits = self.model.label_layer.calc_logit_scores(h_span)
+        logits = self.model.label_layer.logit_scores(h_span)
         # 1D: batch_size, 2D: n_labels; span index
         span_pred = self.model.argmax_span(logits)
 
@@ -248,11 +245,11 @@ class ModelAPI(object):
 
     def set_pred_score_func(self):
         # 1D: batch_size, 2D: n_spans, 3D: hidden_dim
-        h_span = self.model.calc_span_feats(inputs=self.model.inputs)
+        h_span = self.model.span_feats(inputs=self.model.inputs)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        logits = self.model.label_layer.calc_logit_scores(h_span)
+        logits = self.model.label_layer.logit_scores(h_span)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        span_score = self.model.calc_scores(logits)
+        span_score = self.model.exp_score(logits)
 
         self.pred_func = theano.function(
             inputs=self.model.inputs,
@@ -275,11 +272,11 @@ class ModelAPI(object):
         h_span = self.model.feat_layer.forward(self.model.inputs,
                                                self.experts)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        logits = self.model.feat_layer.calc_logit_scores(h=h_span)
+        logits = self.model.feat_layer.logit_scores(h=h_span)
         # 1D: batch_size, 2D: n_labels; span index
         span_pred = self.model.argmax_span(logits)
 
-        nll = self.model.calc_loss(logits, span_true)
+        nll = self.model.loss(logits, span_true)
         l2_reg = L2Regularizer()
         objective = nll + l2_reg(alpha=self.argv.reg,
                                  params=self.model.params)
@@ -307,7 +304,7 @@ class ModelAPI(object):
         h_span = self.model.feat_layer.forward(self.model.inputs,
                                                self.experts)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        span_score = self.model.feat_layer.calc_logit_scores(h=h_span)
+        span_score = self.model.feat_layer.logit_scores(h=h_span)
         # 1D: batch_size, 2D: n_labels; span index
         span_pred = self.model.argmax_span(span_score=span_score)
 
@@ -322,9 +319,9 @@ class ModelAPI(object):
         h_span = self.model.feat_layer.forward(self.model.inputs,
                                                self.experts)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        logits = self.model.feat_layer.calc_logit_scores(h=h_span)
+        logits = self.model.feat_layer.logit_scores(h=h_span)
         # 1D: batch_size, 2D: n_labels, 3D: n_spans; score
-        span_score = self.model.calc_scores(logits)
+        span_score = self.model.exp_score(logits)
 
         self.pred_func = theano.function(
             inputs=self.model.inputs,
@@ -334,11 +331,10 @@ class ModelAPI(object):
 
     def train(self, batches):
         start = time.time()
-
         n_batches = 0.
         loss_total = 0.
-        self.correct = 0.
-        self.n_pred_spans = 0.
+        p_total = 0.
+        correct = 0.
 
         self.model.feat_layer.is_train.set_value(1)
         if self.experts:
@@ -346,14 +342,14 @@ class ModelAPI(object):
                 model.feat_layer.is_train.set_value(1)
 
         for inputs in batches:
-            self.n_total_batches += 1
             n_batches += 1
 
             if n_batches % 100 == 0:
                 sys.stdout.write("%d " % n_batches)
                 sys.stdout.flush()
 
-            if len(inputs[0][0]) > 100:
+            n_words = len(inputs[0][0])
+            if n_words < 2 or 100 < n_words:
                 continue
 
             loss, span_pred = self.train_func(*inputs)
@@ -363,11 +359,11 @@ class ModelAPI(object):
                 exit()
 
             loss_total += loss
-            crr, p_total = calc_correct_and_pred_spans(span_true=inputs[-1],
-                                                       span_pred=span_pred,
-                                                       marks=inputs[1])
-            self.correct += crr
-            self.n_pred_spans += p_total
+            correct_i, p_total_i = correct_and_pred_spans(span_true=inputs[-1],
+                                                          span_pred=span_pred,
+                                                          marks=inputs[1])
+            correct += correct_i
+            p_total += p_total_i
 
         self.model.feat_layer.is_train.set_value(0)
         if self.experts:
@@ -375,12 +371,12 @@ class ModelAPI(object):
                 model.feat_layer.is_train.set_value(0)
 
         avg_loss = loss_total / n_batches
-        p, r, f = calc_f_score(self.correct, self.n_pred_spans, self.n_true_spans)
+        p, r, f = f_score(correct, p_total, self.n_true_spans)
 
         write('\n\tTime: %f seconds' % (time.time() - start))
         write('\tAverage Negative Log Likelihood: %f(%f/%d)' % (avg_loss, loss_total, n_batches))
         write('\tF:{:>7.2%}  P:{:>7.2%} ({:>5}/{:>5})  R:{:>7.2%} ({:>5}/{:>5})'.format(
-            f, p, int(self.correct), int(self.n_pred_spans), r, int(self.correct), int(self.n_true_spans)))
+            f, p, int(correct), int(p_total), r, int(correct), int(self.n_true_spans)))
 
     def predict(self, batches):
         if self.argv.search == 'argmax':
@@ -432,6 +428,158 @@ class ModelAPI(object):
                 span_triples = self.decoder.greedy_span_triples(scores=scores,
                                                                 marks=inputs[-1])
             y.append(span_triples)
+
+        write('\n\tTime: %f seconds' % (time.time() - start))
+        return y
+
+
+class BIOModelAPI(SpanModelAPI):
+    def set_model(self, **kwargs):
+        write('Setting a model...')
+        argv = self.argv
+
+        self.vocab_word = kwargs['vocab_word']
+        self.use_elmo = kwargs['use_elmo']
+        self.vocab_label = kwargs['vocab_label']
+        self.vocab_label_valid = kwargs['vocab_label_valid']
+        word_emb = kwargs['word_emb']
+        vocab_word_size = self.vocab_word.size() if self.vocab_word else 0
+
+        self.input_dim = argv.emb_dim if word_emb is None else word_emb.shape[1]
+        self.hidden_dim = argv.hidden_dim
+        self.output_dim = self.vocab_label.size()
+
+        self.model = CRFModel()
+        self.model.compile(inputs=self._set_inputs(),
+                           vocab_word_size=vocab_word_size,
+                           use_elmo=self.use_elmo,
+                           word_emb=word_emb,
+                           input_dim=[self.input_dim, self.input_dim],
+                           hidden_dim=self.hidden_dim,
+                           output_dim=self.output_dim,
+                           n_layers=argv.n_layers,
+                           init_emb=word_emb,
+                           drop_rate=argv.drop_rate)
+
+        write('\t- {}'.format("\n\t- ".join([l.name for l in self.model.layers])))
+        self._show_model_config()
+
+    def set_train_func(self):
+        write('Building a training function...')
+
+        self.optimizer = get_optimizer(self.argv)
+        self.optimizer.set_params(self.model.params)
+        if self.argv.load_opt_param:
+            write('\tLoading optimization params...')
+            self.optimizer.load_params(self.argv.load_opt_param)
+
+        y_true = T.imatrix('y')
+
+        # 1D: batch_size, 2D: n_words, 3D: output_dim
+        emit_scores = self.model.get_emit_scores()
+        # 1D: batch_size, 2D: n_words; elem=label id
+        y_pred = self.model.label_layer.get_y_pred(emit_scores)
+        # 1D: batch_size; elem=log proba
+        y_path_proba = self.model.label_layer.get_y_path_proba(emit_scores, y_true)
+
+        l2_reg = L2Regularizer()
+        cost = - T.mean(y_path_proba) + l2_reg(alpha=self.argv.reg,
+                                               params=self.model.params)
+
+        grads = T.grad(cost=cost, wrt=self.model.params)
+        updates = self.optimizer(grads=grads, params=self.model.params)
+
+        self.train_func = theano.function(
+            inputs=self.model.inputs + [y_true],
+            outputs=[cost, y_pred],
+            updates=updates,
+            on_unused_input='warn',
+            mode='FAST_RUN'
+        )
+
+    def set_pred_func(self):
+        write('Building a predicting function...')
+
+        # 1D: batch_size, 2D: n_words, 3D: output_dim
+        o = self.model.get_emit_scores()
+        # 1D: batch_size, 2D: n_words; elem=label id
+        y_pred = self.model.label_layer.get_y_pred(o)
+
+        self.pred_func = theano.function(
+            inputs=self.model.inputs,
+            outputs=y_pred,
+            on_unused_input='warn',
+            mode='FAST_RUN'
+        )
+
+    def train(self, batches):
+        start = time.time()
+        n_batches = 0.
+        n_samples = 0.
+        loss_total = 0.
+        p_total = 0.
+        r_total = 0.
+        correct = 0.
+
+        self.model.feat_layer.is_train.set_value(1)
+
+        for index, inputs in enumerate(batches):
+            if (index + 1) % 100 == 0:
+                sys.stdout.write('%d ' % (index + 1))
+                sys.stdout.flush()
+
+            batch_size = len(inputs[0])
+            n_words = len(inputs[0][0])
+            if n_words < 2 or 100 < n_words:
+                continue
+
+            loss, y_pred = self.train_func(*inputs)
+
+            if math.isnan(loss):
+                write('\n\nNAN: Index: %d\n' % (index + 1))
+                exit()
+
+            loss_total += loss
+            n_batches += 1
+            n_samples += batch_size * n_words
+
+            correct_i, p_total_i, r_total_i = metrics_for_bio(y_true=inputs[-1],
+                                                              y_pred=y_pred,
+                                                              vocab_label=self.vocab_label)
+            correct += correct_i
+            p_total += p_total_i
+            r_total += r_total_i
+
+        self.model.feat_layer.is_train.set_value(0)
+
+        avg_loss = loss_total / n_batches
+        p, r, f = f_score(correct, p_total, r_total)
+
+        write('\n\tTime: %f seconds' % (time.time() - start))
+        write('\tAverage Negative Log Likelihood: %f(%f/%d)' % (avg_loss, loss_total, n_batches))
+        write('\tF:{:>7.2%}  P:{:>7.2%} ({:>5}/{:>5})  R:{:>7.2%} ({:>5}/{:>5})'.format(
+            f, p, int(correct), int(p_total), r, int(correct), int(r_total)))
+
+    def predict(self, batches):
+        """
+        :param batches: 1D: n_batches, 2D: n_words; elem=(x_w, x_m)
+        :return: y: 1D: n_batches, 2D: batch_size; elem=(y_pred(1D:n_words), y_proba(float))
+        """
+        start = time.time()
+        y = []
+
+        for index, inputs in enumerate(batches):
+            if (index + 1) % 100 == 0:
+                sys.stdout.write("%d " % (index + 1))
+                sys.stdout.flush()
+
+            if len(inputs) == 0:
+                y_pred = []
+            elif len(inputs[0][0]) < 2:
+                y_pred = [[0] for _ in range(len(inputs[0]))]
+            else:
+                y_pred = self.pred_func(*inputs)
+            y.append(y_pred)
 
         write('\n\tTime: %f seconds' % (time.time() - start))
         return y

@@ -3,6 +3,7 @@ import theano.tensor as T
 
 from nn.layers.embeddings import Embedding, ElmoLayer
 from nn.layers.core import Dense, Dropout
+from nn.layers.seqlabel import CRF
 from nn.layers.stack import BiRNNLayer
 from nn.utils import logsumexp3d
 
@@ -32,7 +33,7 @@ class FeatureLayer(Model):
         self._set_layers(kwargs)
         self._set_params()
 
-    def calc_hidden_units(self, inputs):
+    def forward(self, inputs):
         embs = []
         for i in range(len(inputs)):
             # 1D: batch_size, 2D: n_words, 3D: input_dim
@@ -105,7 +106,7 @@ class LabelLayer(Model):
         self.layers = [Dense(input_dim=hidden_dim,
                              output_dim=output_dim)]
 
-    def calc_feats(self, h):
+    def span_feats2(self, h):
         """
         :param h: 1D: n_words, 2D: batch_size, 3D: hidden_dim
         :return: 1D: batch_size, 2D: n_spans, 3D: 2 * hidden_dim
@@ -125,7 +126,29 @@ class LabelLayer(Model):
 
         return T.concatenate([h_add, h_diff], axis=2)
 
-    def calc_logit_scores(self, h):
+    def span_feats(self, h):
+        """
+        :param h: 1D: n_words, 2D: batch_size, 3D: hidden_dim
+        :return: 1D: batch_size, 2D: n_words(i), 3D: n_words(j), 4D: 2 * hidden_dim
+        """
+        h = h.dimshuffle(1, 0, 2)
+        n_words = h.shape[1]
+        pad = T.zeros(shape=(h.shape[0], 1, h.shape[2]))
+        h_pad = T.concatenate([h, pad], axis=1)
+
+        m = T.triu(T.ones(shape=(n_words, n_words)))
+        indices = m.nonzero()
+
+        # 1D: batch_size, 2D: n_spans, 3D: hidden_dim
+        h_i = h[:, indices[0]]
+        h_j = h_pad[:, indices[1] + 1]
+
+        h_diff = h_i - h_j
+        h_add = h_i + h_j
+
+        return T.concatenate([h_add, h_diff], axis=2)
+
+    def logit_scores(self, h):
         """
         :param h: 1D: batch_size, 2D: n_spans, 3D: 2 * hidden_dim
         :return: 1D: batch_size, 2D: n_labels, 3D: n_spans; score
@@ -180,10 +203,44 @@ class MoELabelLayer(LabelLayer):
 
         for i, expert in enumerate(experts):
             # 1D: batch_size, 2D: n_spans, 3D: 2 * hidden_dim
-            h_span_tm = expert.calc_span_feats(inputs=x)
+            h_span_tm = expert.span_feats(inputs=x)
             h_span = h_span + mixture[:, i] * h_span_tm
 
         return self.layers[1].forward(h_span)
+
+
+class CRFLayer(Model):
+    def compile(self, **kwargs):
+        self._set_layers(kwargs)
+        self._set_params()
+
+    def _set_layers(self, args):
+        layer = CRF(input_dim=args['hidden_dim'],
+                    output_dim=args['output_dim'])
+        self.layers = [layer]
+
+    def forward(self, h):
+        """
+        :param h: 1D: n_words, 2D: batch_size, 3D: hidden_dim
+        :return: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=emit score
+        """
+        return self.layers[0].forward(x=h).dimshuffle(1, 0, 2)
+
+    def get_y_pred(self, o):
+        """
+        :param o: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=emit score
+        :return: 1D: batch_size, 2D: n_words; elem=label id
+        """
+        return self.layers[0].get_y_pred(emit_scores=o.dimshuffle(1, 0, 2))
+
+    def get_y_path_proba(self, o, y_true):
+        """
+        :param o: 1D: batch_size, 2D: n_words, 3D: output_dim; elem=emit score
+        :param y_true: 1D: batch_size, 2D: n_words; elem=label id
+        :return: 1D: batch_size; elem=log proba
+        """
+        return self.layers[0].get_y_proba(emit_scores=o.dimshuffle(1, 0, 2),
+                                          y_true=y_true.dimshuffle(1, 0))
 
 
 class SpanModel(Model):
@@ -201,14 +258,14 @@ class SpanModel(Model):
         self.layers = self.feat_layer.layers + self.label_layer.layers
         self._set_params()
 
-    def calc_span_feats(self, inputs):
+    def span_feats(self, inputs):
         """
         :param inputs: 1D: n_inputs, 2D: batch_size, 3D: n_words; feat id
         :return: 1D: batch_size, 2D: n_spans, 3D: 2 * hidden_dim
         """
         # 1D: n_words, 2D: batch_size, 3D: 2 * hidden_dim
-        h_rnn = self.feat_layer.calc_hidden_units(inputs)
-        return self.label_layer.calc_feats(h_rnn)
+        h_rnn = self.feat_layer.forward(inputs)
+        return self.label_layer.span_feats(h_rnn)
 
     @staticmethod
     def argmax_span(span_score):
@@ -219,7 +276,7 @@ class SpanModel(Model):
         return T.argmax(span_score, axis=2)
 
     @staticmethod
-    def calc_loss(span_score, span_true):
+    def loss(span_score, span_true):
         """
         :param span_score: 1D: batch_size, 2D: n_labels, 3D: n_spans
         :param span_true: 1D: batch_size * n_spans; (batch index, label id, span index)
@@ -245,7 +302,7 @@ class SpanModel(Model):
         return - T.sum(nll) / batch_size
 
     @staticmethod
-    def calc_scores(span_score):
+    def exp_score(span_score):
         """
         :param span_score: 1D: batch_size, 2D: n_labels, 3D: n_spans; logit score
         :return: 1D: batch_size, 2D: n_labels, 3D: n_spans
@@ -260,4 +317,27 @@ class MoEModel(SpanModel):
         self.feat_layer.compile(**kwargs)
         self.layers = self.feat_layer.layers
         self._set_params()
+
+
+class CRFModel(Model):
+    def __init__(self):
+        super(CRFModel, self).__init__()
+        self.feat_layer = None
+        self.label_layer = None
+
+    def compile(self, inputs, **kwargs):
+        self.inputs = inputs
+        self.feat_layer = FeatureLayer()
+        self.feat_layer.compile(**kwargs)
+        self.label_layer = CRFLayer()
+        self.label_layer.compile(**kwargs)
+        self.layers = self.feat_layer.layers + self.label_layer.layers
+        self._set_params()
+
+    def get_emit_scores(self):
+        """
+        :return: 1D: batch_size, 2D: n_words, 3D: output_dim
+        """
+        h = self.feat_layer.forward(self.inputs)
+        return self.label_layer.forward(h)
 

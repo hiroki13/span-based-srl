@@ -11,11 +11,11 @@ class Sent(object):
         self.forms = [word.form for word in self.words]
         self.strings = [word.string for word in self.words]
         self.marks = self._set_marks(self.words)
-        self.props = self._set_props(self.words)
+        self.props = [word.prop for word in self.words]
 
         self.prd_indices = self._set_prd_indices(self.marks)
         self.prd_forms = [self.forms[i] for i in self.prd_indices]
-        self.prd_props = self._set_prd_props(self.props)
+        self.prd_bio_labels = self._set_prd_bio_labels(self.props)
         self.has_prds = True if len(self.prd_indices) > 0 else False
 
         self.n_words = len(sent)
@@ -24,6 +24,7 @@ class Sent(object):
         self.word_ids = None
         self.mark_ids = None
         self.elmo_emb = None
+        self.bio_label_ids = None
         self.span_triples = None
         self.span_triples_with_null = None
 
@@ -36,39 +37,6 @@ class Sent(object):
 
     def _set_marks(self, words):
         raise NotImplementedError
-
-    def _set_props(self, words):
-        props = [word.prop for word in words]
-        props = [self._make_bio_labels(prop) for prop in map(lambda p: p, zip(*props))]
-        return list(map(lambda p: p, zip(*props)))
-
-    @staticmethod
-    def _set_prd_indices(marks):
-        return [i for i, mark in enumerate(marks) if mark != HYPH]
-
-    @staticmethod
-    def _set_prd_props(props):
-        return list(map(lambda p: p, zip(*props)))
-
-    def set_word_ids(self, vocab_word):
-        self.word_ids = array([w for w in str_to_id(sent=self.forms,
-                                                    vocab=vocab_word,
-                                                    unk=UNK)])
-
-    def set_mark_ids(self):
-        mark_ids = [[0 for _ in range(self.n_words)] for _ in range(self.n_prds)]
-        for i, prd_index in enumerate(self.prd_indices):
-            mark_ids[i][prd_index] = 1
-        self.mark_ids = array(mark_ids)
-
-    def set_elmo_emb(self, elmo_emb):
-        """
-        :param elmo_emb: 1D: n_layers, 2D: n_words, 3D: dim
-        """
-        elmo_emb = np.asarray(elmo_emb)
-        elmo_emb = elmo_emb.transpose((1, 0, 2))
-        assert len(elmo_emb) == self.n_words
-        self.elmo_emb = elmo_emb
 
     @staticmethod
     def _make_bio_labels(prop):
@@ -98,29 +66,85 @@ class Sent(object):
         return labels
 
     @staticmethod
-    def _get_spans(props):
+    def _set_prd_indices(marks):
+        return [i for i, mark in enumerate(marks) if mark != HYPH]
+
+    def _set_prd_bio_labels(self, props):
         """
-        :param props: 1D: n_words; elem=bio-label
+        :param props: 1D: n_words, 2D: n_prds
+        :return: 1D: n_prds, 2D: n_words
+        """
+        props = map(lambda p: p, zip(*props))
+        return [self._make_bio_labels(prop) for prop in props]
+
+    def set_word_ids(self, vocab_word):
+        self.word_ids = array(str_to_id(sent=self.forms,
+                                        vocab=vocab_word,
+                                        unk=UNK))
+
+    def set_mark_ids(self):
+        mark_ids = [[0 for _ in range(self.n_words)] for _ in range(self.n_prds)]
+        for i, prd_index in enumerate(self.prd_indices):
+            mark_ids[i][prd_index] = 1
+        self.mark_ids = array(mark_ids)
+
+    def set_label_ids(self, vocab_label):
+        """
+        :param vocab_label: Vocab (BIO labels); e.g. B-A0, I-A0
+        """
+        assert len(self.prd_indices) == len(self.prd_bio_labels)
+        label_ids = []
+        for prd_index, props in zip(self.prd_indices, self.prd_bio_labels):
+            y = str_to_id(sent=props, vocab=vocab_label, unk='O')
+            label_ids.append(y)
+        self.bio_label_ids = array(label_ids)
+
+    def set_elmo_emb(self, elmo_emb):
+        """
+        :param elmo_emb: 1D: n_layers, 2D: n_words, 3D: dim
+        """
+        elmo_emb = np.asarray(elmo_emb)
+        elmo_emb = elmo_emb.transpose((1, 0, 2))
+        assert len(elmo_emb) == self.n_words
+        self.elmo_emb = elmo_emb
+
+    def set_span_triples(self, vocab_label):
+        """
+        :param vocab_label: Vocab (labels); e.g. A0, A1
+        """
+        triples = []
+        for bio_labels in self.prd_bio_labels:
+            prd_triples = []
+            for (label, i, j) in self._get_spans(bio_labels):
+                r = vocab_label.get_id(label)
+                prd_triples.append((r, i, j))
+            triples.append(prd_triples)
+        self.span_triples = triples
+
+    @staticmethod
+    def _get_spans(bio_labels):
+        """
+        :param bio_labels: 1D: n_words; elem=bio label
         :return: 1D: n_spans; elem=[label, i, j]
         """
         spans = []
         span = []
-        for w_i, label in enumerate(props):
+        for i, label in enumerate(bio_labels):
             if label[-2:] == '-V':
                 continue
             if label.startswith('B-'):
                 if span:
                     spans.append(span)
-                span = [label[2:], w_i, w_i]
+                span = [label[2:], i, i]
             elif label.startswith('I-'):
                 if span:
                     if label[2:] == span[0]:
-                        span[2] = w_i
+                        span[2] = i
                     else:
                         spans.append(span)
-                        span = [label[2:], w_i, w_i]
+                        span = [label[2:], i, i]
                 else:
-                    span = [label[2:], w_i, w_i]
+                    span = [label[2:], i, i]
             else:
                 if span:
                     spans.append(span)
@@ -128,19 +152,6 @@ class Sent(object):
         if span:
             spans.append(span)
         return spans
-
-    def set_span_triples(self, vocab_label):
-        """
-        :param vocab_label: Vocab (labels); e.g. A0, A1
-        """
-        triples = []
-        for props in self.prd_props:
-            triples_tmp = []
-            for (label, i, j) in self._get_spans(props):
-                r = vocab_label.get_id(label)
-                triples_tmp.append((r, i, j))
-            triples.append(triples_tmp)
-        self.span_triples = triples
 
     def set_span_triples_with_null(self, n_labels):
         assert len(self.span_triples) == len(self.prd_indices)

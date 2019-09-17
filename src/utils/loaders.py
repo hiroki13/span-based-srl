@@ -75,7 +75,7 @@ class Conll05Loader(Loader):
         return corpus
 
 
-class CoNLL12Loader(Loader):
+class Conll12Loader(Loader):
 
     def load(self, path, data_size=1000000, is_test=False):
         if path is None:

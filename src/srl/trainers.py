@@ -1,19 +1,21 @@
-from srl.model_api import ModelAPI
-from srl.preprocessors import Preprocessor
-from utils.evaluators import Evaluator, calc_true_spans
-from utils.loaders import Conll05Loader, CoNLL12Loader, load_emb
-from utils.savers import save_pickle
-from utils.misc import write, show_score_history, make_vocab_from_ids
+from utils.evaluators import count_true_spans
+from utils.loaders import load_emb
+from utils.misc import write, show_score_history
 from utils.misc import make_output_dir, get_file_names_in_dir, get_latest_param_fn
 
 
 class Trainer(object):
-    def __init__(self, argv):
+    def __init__(self,
+                 argv,
+                 loader,
+                 preprocessor,
+                 evaluator,
+                 model_api):
         self.argv = argv
-        self.model_api = ModelAPI(argv)
-        self.preprocessor = Preprocessor(argv)
-        self.evaluator = Evaluator(argv)
-        self.loader = Conll05Loader(argv) if argv.data_type == "conll05" else CoNLL12Loader(argv)
+        self.loader = loader
+        self.preprocessor = preprocessor
+        self.evaluator = evaluator
+        self.model_api = model_api
 
         self.f1_history = {}
         self.best_valid_f1 = 0.0
@@ -62,8 +64,7 @@ class Trainer(object):
         valid_corpus = loader.load(path=argv.dev_data,
                                    data_size=argv.data_size,
                                    is_test=False)
-        write('\t- # Sents: Train:%d  Valid:%d' % (len(train_corpus),
-                                                   len(valid_corpus)))
+        write('\t- # Sents: Train:%d  Valid:%d' % (len(train_corpus), len(valid_corpus)))
 
         ##############
         # Make sents #
@@ -75,15 +76,9 @@ class Trainer(object):
         # Make labels #
         ###############
         write('Making Labels...')
-
-        if argv.save or argv.save_every_epoch:
-            save_label = True
-        else:
-            save_label = False
-
         vocab_label_train = pproc.make_and_save_vocab_label(sents=train_sents,
                                                             vocab_label_init=None,
-                                                            save=save_label,
+                                                            save=argv.save,
                                                             load=True)
         vocab_label_valid = pproc.make_and_save_vocab_label(sents=valid_sents,
                                                             vocab_label_init=vocab_label_train,
@@ -94,11 +89,11 @@ class Trainer(object):
         ###################
         # Set sent params #
         ###################
-        train_sents = pproc.set_sent_params(sents=train_sents,
+        train_sents = pproc.set_sent_config(sents=train_sents,
                                             elmo_emb=train_elmo_emb,
                                             vocab_word=vocab_word,
                                             vocab_label=vocab_label_train)
-        valid_sents = pproc.set_sent_params(sents=valid_sents,
+        valid_sents = pproc.set_sent_config(sents=valid_sents,
                                             elmo_emb=valid_elmo_emb,
                                             vocab_word=vocab_word,
                                             vocab_label=vocab_label_valid)
@@ -127,7 +122,8 @@ class Trainer(object):
         else:
             is_ensemble = False
 
-        self.model_api.n_true_spans = calc_true_spans(train_sents)
+        if argv.method == 'span':
+            self.model_api.n_true_spans = count_true_spans(train_sents)
 
         if is_ensemble:
             self.model_api.set_ensemble_model(word_emb=word_emb,
@@ -188,6 +184,8 @@ class Trainer(object):
             valid_batches = pproc.make_batches(samples=valid_samples,
                                                is_valid_data=True)
             valid_batch_x, valid_batch_y = pproc.split_x_and_y(valid_batches)
+        else:
+            valid_batch_x = valid_batch_y = []
 
         ##########################################
         # Initial result with pre-trained params #
@@ -236,126 +234,4 @@ class Trainer(object):
                         self.model_api.save_params(epoch=0)
                         self.model_api.optimizer.save_params(epoch=0)
 
-            if argv.save_every_epoch:
-                self.model_api.save_params(epoch=epoch)
-                self.model_api.optimizer.save_params(epoch=epoch)
-
             show_score_history(self.f1_history)
-
-    def validate(self):
-        write('\nVALIDATING START\n')
-
-        argv = self.argv
-        loader = self.loader
-        pproc = self.preprocessor
-
-        make_output_dir(self.argv)
-
-        ################
-        # Load dataset #
-        ################
-        write('Loading Dataset...')
-        valid_corpus = loader.load(path=argv.dev_data,
-                                   data_size=argv.data_size,
-                                   is_test=False)
-        valid_sents = pproc.make_sents(valid_corpus)
-
-        #################
-        # Load init emb #
-        #################
-        if argv.word_emb:
-            write('Loading Embeddings...')
-            word_list_emb, word_emb = load_emb(argv.init_emb)
-            vocab_word = pproc.make_vocab_word(word_list_emb)
-            write('\t- # Embedding Words: %d' % vocab_word.size())
-        else:
-            vocab_word = word_emb = None
-
-        #################
-        # Load elmo emb #
-        #################
-        if argv.dev_elmo_emb:
-            write('Loading ELMo Embeddings...')
-            valid_elmo_emb = loader.load_hdf5(argv.dev_elmo_emb)
-        else:
-            valid_elmo_emb = None
-
-        ###############
-        # Make labels #
-        ###############
-        write('Loading Labels...')
-        label_key_value = loader.load_key_value_format(argv.load_label)
-        vocab_label_train = make_vocab_from_ids(label_key_value)
-        vocab_label_valid = pproc.make_and_save_vocab_label(sents=valid_sents,
-                                                            vocab_label_init=vocab_label_train,
-                                                            save=False,
-                                                            load=False)
-        write('\t- # Labels: %d' % vocab_label_train.size())
-
-        ###################
-        # Set sent params #
-        ###################
-        valid_sents = pproc.set_sent_params(sents=valid_sents,
-                                            elmo_emb=valid_elmo_emb,
-                                            vocab_word=vocab_word,
-                                            vocab_label=vocab_label_valid)
-        ################
-        # Make samples #
-        ################
-        write('Making Valid Samples...')
-        valid_samples = pproc.make_samples(sents=valid_sents)
-        valid_batches = pproc.make_batches(samples=valid_samples,
-                                           is_valid_data=True)
-        valid_batch_x, y_true = pproc.split_x_and_y(valid_batches)
-        write('\t- # Samples: %d' % len(valid_samples))
-
-        #################
-        # Set Model API #
-        #################
-        if valid_elmo_emb is not None:
-            use_elmo = True
-        else:
-            use_elmo = False
-
-        self.model_api.set_model(word_emb=word_emb,
-                                 use_elmo=use_elmo,
-                                 vocab_word=vocab_word,
-                                 vocab_label=vocab_label_train,
-                                 vocab_label_valid=vocab_label_valid)
-        self.model_api.set_pred_func()
-
-        ############
-        # Validate #
-        ############
-        write('\nVALIDATION START')
-
-        dir_name = argv.load_param_dir
-        param_files = [fn for fn in get_file_names_in_dir(dir_name)
-                       if fn.split('/')[-1].startswith('param')]
-        write('\t- # Param Files: %d' % len(param_files))
-
-        best_file = None
-        best_param = None
-        best_f1 = -1.0
-
-        for param_file in param_files:
-            write('\nFile Name: %s' % param_file)
-            self.model_api.load_params(param_file)
-            y_pred = self.model_api.predict(valid_batch_x)
-            valid_f1 = self.evaluator.f_score(y_true=y_true,
-                                              y_pred=y_pred,
-                                              vocab_label=vocab_label_valid)
-            if best_f1 < valid_f1:
-                best_f1 = valid_f1
-                best_file = param_file
-                best_param = [p.get_value(borrow=True)
-                              for p in self.model_api.model.params]
-
-        write('Best Param=%s F1=%f' % (best_file, best_f1))
-
-        fn = argv.load_param_dir
-        if argv.output_fn:
-            fn += '/param.%s' % argv.output_fn
-        else:
-            fn += '/param.%s.best' % argv.method
-        save_pickle(fn=fn, data=best_param)

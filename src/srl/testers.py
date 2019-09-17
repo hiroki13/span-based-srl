@@ -1,19 +1,21 @@
-from srl.model_api import ModelAPI
-from srl.preprocessors import Preprocessor
-from utils.evaluators import Evaluator
-from utils.loaders import Conll05Loader, CoNLL12Loader, load_emb
-from utils.savers import Saver
+from utils.loaders import load_emb
 from utils.misc import write, make_vocab_from_ids
 
 
 class Tester(object):
-    def __init__(self, argv):
+    def __init__(self,
+                 argv,
+                 loader,
+                 saver,
+                 preprocessor,
+                 evaluator,
+                 model_api):
         self.argv = argv
-        self.model_api = ModelAPI(argv)
-        self.preprocessor = Preprocessor(argv)
-        self.evaluator = Evaluator(argv)
-        self.loader = Conll05Loader(argv) if argv.data_type == "conll05" else CoNLL12Loader(argv)
-        self.saver = Saver(argv)
+        self.loader = loader
+        self.saver = saver
+        self.preprocessor = preprocessor
+        self.evaluator = evaluator
+        self.model_api = model_api
 
     def predict(self):
         argv = self.argv
@@ -56,7 +58,7 @@ class Tester(object):
         ###################
         # Set sent params #
         ###################
-        test_sents = pproc.set_sent_params(sents=test_sents,
+        test_sents = pproc.set_sent_config(sents=test_sents,
                                            elmo_emb=test_elmo_emb,
                                            vocab_word=vocab_word,
                                            vocab_label=None)

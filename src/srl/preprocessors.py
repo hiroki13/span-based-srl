@@ -5,7 +5,7 @@ import numpy as np
 
 from utils.vocab import Vocab, UNK
 from utils.sent import Conll05Sent, Conll12Sent
-from utils.misc import convert_span_to_span_index, make_vocab_from_ids
+from utils.misc import span_to_span_index, make_vocab_from_ids
 from utils.savers import save_key_value_format
 from utils.loaders import load_key_value_format
 
@@ -14,25 +14,6 @@ class Preprocessor(object):
     def __init__(self, argv):
         self.argv = argv
         self.data_type = argv.data_type
-
-    def make_sents(self, corpus):
-        """
-        :param corpus: 1D: n_sents, 2D: n_words
-        :return: 1D: n_sents
-        """
-        if len(corpus) == 0:
-            return []
-
-        if self.data_type == 'conll05':
-            column = 6
-            gen_sent = Conll05Sent
-        else:
-            column = 12
-            gen_sent = Conll12Sent
-
-        is_test = True if len(corpus[0][0]) < column else False
-        return [gen_sent(sent=sent, is_test=is_test)
-                for index, sent in enumerate(corpus)]
 
     @staticmethod
     def make_vocab_word(word_list):
@@ -71,6 +52,116 @@ class Preprocessor(object):
 
         return vocab_label
 
+    def make_sents(self, corpus):
+        """
+        :param corpus: 1D: n_sents, 2D: n_words
+        :return: 1D: n_sents
+        """
+        if len(corpus) == 0:
+            return []
+
+        if self.data_type == 'conll05':
+            column = 6
+            gen_sent = Conll05Sent
+        else:
+            column = 12
+            gen_sent = Conll12Sent
+
+        is_test = True if len(corpus[0][0]) < column else False
+        return [gen_sent(sent, is_test) for sent in corpus]
+
+    @staticmethod
+    def split_x_and_y(batches, index=-1):
+        """
+        :param batches: 1D: n_batches, 2D: batch_size; elem=(x, m, y)
+        :param index: split column index
+        :return 1D: n_batches, 2D: batch_size; elem=(x, m)
+        :return 1D: n_batches, 2D: batch_size; elem=y
+        """
+        x = []
+        y = []
+        for batch in batches:
+            x.append(batch[:index])
+            y.append(batch[index])
+        return x, y
+
+    def make_batches(self,
+                     samples,
+                     is_valid_data=False,
+                     shuffle=True):
+        """
+        :param samples: 1D: n_samples, 2D: [x, m, y]
+        :param is_valid_data: boolean
+        :param shuffle: boolean
+        :return 1D: n_batches, 2D: batch_size; elem=[x, m, y]
+        """
+        if shuffle:
+            np.random.shuffle(samples)
+            samples.sort(key=lambda sample: len(sample[0]))
+
+        batches = []
+        batch = []
+        prev_n_words = len(samples[0][0])
+
+        for sample in samples:
+            n_words = len(sample[0])
+            if len(batch) == self.argv.batch_size or prev_n_words != n_words:
+                batches.append(self._make_one_batch(batch, is_valid_data))
+                batch = []
+                prev_n_words = n_words
+            batch.append(sample)
+
+        if batch:
+            batches.append(self._make_one_batch(batch, is_valid_data))
+
+        if shuffle:
+            np.random.shuffle(batches)
+
+        for batch in batches:
+            yield batch
+
+    @staticmethod
+    def _make_one_batch(batch, is_valid_data):
+        raise NotImplementedError
+
+    @staticmethod
+    def make_batch_per_sent(sents):
+        """
+        :param sents: 1D: n_sents; Sent()
+        :return 1D: n_sents, 2D: n_prds; elem=[x, m]
+        """
+        batches = []
+        for sent in sents:
+            x = []
+
+            x_word_ids = sent.word_ids
+            if x_word_ids is not None:
+                x.append(x_word_ids)
+
+            x_elmo_emb = sent.elmo_emb
+            if x_elmo_emb is not None:
+                x.append(x_elmo_emb)
+
+            batch = list(map(lambda m: x + [m], sent.mark_ids))
+            batches.append(list(map(lambda b: b, zip(*batch))))
+
+        return batches
+
+    @staticmethod
+    def set_sent_config(sents, elmo_emb, vocab_word, vocab_label):
+        raise NotImplementedError
+
+    @staticmethod
+    def make_samples(sents, is_valid_data=False):
+        raise NotImplementedError
+
+    def make_vocab_label(self,
+                         sents,
+                         vocab_label_init=None):
+        raise NotImplementedError
+
+
+class SpanPreprocessor(Preprocessor):
     def make_vocab_label(self,
                          sents,
                          vocab_label_init=None):
@@ -90,7 +181,7 @@ class Preprocessor(object):
 
         bio_labels = []
         for sent in sents:
-            for props in sent.prd_props:
+            for props in sent.prd_bio_labels:
                 bio_labels += props
         cnt = Counter(bio_labels)
         bio_labels = [(w, c) for w, c in cnt.most_common()]
@@ -102,22 +193,7 @@ class Preprocessor(object):
         return vocab_label
 
     @staticmethod
-    def split_x_and_y(batches, index=-1):
-        """
-        :param batches: 1D: n_batches, 2D: batch_size; elem=(x, m, y)
-        :param index: split column index
-        :return 1D: n_batches, 2D: batch_size; elem=(x, m)
-        :return 1D: n_batches, 2D: batch_size; elem=y
-        """
-        x = []
-        y = []
-        for batch in batches:
-            x.append(batch[:index])
-            y.append(batch[index])
-        return x, y
-
-    @staticmethod
-    def set_sent_params(sents, elmo_emb, vocab_word, vocab_label):
+    def set_sent_config(sents, elmo_emb, vocab_word, vocab_label):
         for index, sent in enumerate(sents):
             sent.set_mark_ids()
             if vocab_word:
@@ -130,7 +206,7 @@ class Preprocessor(object):
         return sents
 
     @staticmethod
-    def make_samples(sents, is_valid_data=True):
+    def make_samples(sents, is_valid_data=False):
         samples = []
 
         for sent in sents:
@@ -156,41 +232,6 @@ class Preprocessor(object):
 
         return samples
 
-    def make_batches(self,
-                     samples,
-                     is_valid_data=False,
-                     shuffle=True):
-        """
-        :param samples: 1D: n_samples, 2D: [x, m, y]
-        :param is_valid_data: boolean
-        :param shuffle: boolean
-        :return 1D: n_batches, 2D: batch_size; elem=[x, m, y]
-        """
-        if shuffle:
-            np.random.shuffle(samples)
-            samples.sort(key=lambda sample: len(sample[0]))
-
-        batches = []
-        batch = []
-        prev_n_words = len(samples[0][0])
-        for sample in samples:
-            n_words = len(sample[0])
-            if len(batch) == self.argv.batch_size or prev_n_words != n_words:
-                batches.append(self._make_one_batch(batch=batch,
-                                                    is_valid_data=is_valid_data))
-                batch = []
-                prev_n_words = n_words
-            batch.append(sample)
-        if batch:
-            batches.append(self._make_one_batch(batch=batch,
-                                                is_valid_data=is_valid_data))
-
-        if shuffle:
-            np.random.shuffle(batches)
-
-        for batch in batches:
-            yield batch
-
     @staticmethod
     def _make_one_batch(batch, is_valid_data):
         if is_valid_data:
@@ -203,7 +244,7 @@ class Preprocessor(object):
             b.append(sample[:-1])
             y_tmp = []
             for (r, i, j) in sample[-1]:
-                span_index = convert_span_to_span_index(i, j, n_words)
+                span_index = span_to_span_index(i, j, n_words)
                 y_tmp.append([b_index, r, span_index])
             y += y_tmp
 
@@ -211,13 +252,50 @@ class Preprocessor(object):
 
         return x + [y]
 
+
+class BIOPreprocessor(Preprocessor):
+    def make_vocab_label(self,
+                         sents,
+                         vocab_label_init=None):
+        if len(sents) == 0:
+            return None
+
+        if vocab_label_init:
+            vocab_label = deepcopy(vocab_label_init)
+        else:
+            vocab_label = Vocab()
+            none_label = 'O'
+            vocab_label.add_word(none_label)
+
+        labels = []
+        for sent in sents:
+            if sent.has_prds:
+                for prop in sent.prd_bio_labels:
+                    labels += prop
+        cnt = Counter(labels)
+        labels = [(w, c) for w, c in cnt.most_common()]
+
+        for label, count in labels:
+            vocab_label.add_word(label)
+
+        return vocab_label
+
     @staticmethod
-    def make_batch_per_sent(sents):
-        """
-        :param sents: 1D: n_sents; Sent()
-        :return 1D: n_sents, 2D: n_prds; elem=[x, m]
-        """
-        batches = []
+    def set_sent_config(sents, elmo_emb, vocab_word, vocab_label):
+        for index, sent in enumerate(sents):
+            sent.set_mark_ids()
+            if vocab_word:
+                sent.set_word_ids(vocab_word)
+            if elmo_emb:
+                sent.set_elmo_emb(elmo_emb[str(index)])
+            if vocab_label:
+                sent.set_label_ids(vocab_label)
+        return sents
+
+    @staticmethod
+    def make_samples(sents, is_valid_data=False):
+        samples = []
+
         for sent in sents:
             x = []
 
@@ -229,30 +307,12 @@ class Preprocessor(object):
             if x_elmo_emb is not None:
                 x.append(x_elmo_emb)
 
-            batch = list(map(lambda m: x + [m], sent.mark_ids))
-            batches.append(list(map(lambda b: b, zip(*batch))))
+            assert len(sent.mark_ids) == len(sent.bio_label_ids)
+            for m, spans in zip(sent.mark_ids, sent.bio_label_ids):
+                samples.append(x + [m, spans])
 
-        return batches
+        return samples
 
-
-def make_sample_from_sent(sent):
-    sample = []
-    x = []
-
-    x_corpus = sent.word_ids_corpus
-    if x_corpus is not None:
-        x.append(x_corpus)
-
-    x_emb = sent.word_ids_emb
-    if x_emb is not None:
-        x.append(x_emb)
-
-    x_elmo = sent.elmo_embs
-    if x_elmo is not None:
-        x.append(x_elmo)
-
-    for m, spans in zip(sent.mark_ids, sent.prd_spans):
-        # prd_spans: 1D: n_spans, 2D: [label_id, pre_index, post_index]
-        sample.append(x + [m, spans])
-
-    return list(map(lambda b: b, zip(*sample)))
+    @staticmethod
+    def _make_one_batch(batch, is_valid_data):
+        return list(map(lambda b: b, zip(*batch)))

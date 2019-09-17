@@ -95,42 +95,5 @@ def get_latest_param_fn(file_names):
     return latest_fn, latest_epoch
 
 
-def span_index_to_pair(index, n_words):
-    return int(index / n_words), int(index % n_words)
-
-
-def convert_triples_to_str(triples, vocab_label):
-    return [[(vocab_label.get_word(r), i, j) for (r, i, j) in tri] for tri in triples]
-
-
-def convert_span_index_to_pair(span_indices, n_words):
-    """
-    :param span_indices: 1D: batch_size, 2D: n_labels; elem=span_index
-    :return: 1D: batch_size, 2D: n_labels, 3D: [pre_index, post_index]
-    """
-    return [[span_index_to_pair(index, n_words) for index in indices_i]
-            for indices_i in span_indices]
-
-
-def convert_span_index_to_triple(span_indices, marks):
-    """
-    :param span_indices: 1D: batch_size, 2D: n_labels; elem=span_index
-    :param marks: 1D: batch_size, 2D: n_words; elem=0/1
-    :return: 1D: batch_size, 2D: n_labels, 3D: [label_id, pre_index, post_index]
-    """
-    n_words = len(marks[0])
-    spans = []
-    for indices_i, mark in zip(span_indices, marks):
-        spans_i = []
-        prd_index = list(mark).index(1)
-        for label_id, index in enumerate(indices_i):
-            span_pair = span_index_to_pair(index, n_words)
-            if span_pair[0] == span_pair[1] == prd_index:
-                continue
-            spans_i.append([label_id, span_pair[0], span_pair[1]])
-        spans.append(spans_i)
-    return spans
-
-
-def convert_span_to_span_index(i, j, n_words):
+def span_to_span_index(i, j, n_words):
     return i * (n_words - 1) + j - np.arange(i).sum()
